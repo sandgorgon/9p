@@ -3,6 +3,7 @@
 [![CI](https://github.com/sandgorgon/9p/actions/workflows/ci.yml/badge.svg)](https://github.com/sandgorgon/9p/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/sandgorgon/9p)](https://github.com/sandgorgon/9p/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/sandgorgon/9p)](LICENSE)
+[![Go Reference](https://pkg.go.dev/badge/github.com/sandgorgon/9p.svg)](https://pkg.go.dev/github.com/sandgorgon/9p)
 
 [![Go](https://img.shields.io/badge/go-blue?logo=go&logoColor=white)](https://github.com/topics/go)
 [![Plan 9](https://img.shields.io/badge/plan9-lightgrey)](https://github.com/topics/plan9)
