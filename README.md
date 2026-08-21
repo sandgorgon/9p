@@ -1,5 +1,7 @@
 # p9
 
+[![License: MIT](https://img.shields.io/github/license/sandgorgon/9p)](LICENSE)
+
 A pure-Go implementation of the Plan 9 filesystem protocol, **9P2000**
 (the original 1992 spec — not the `.u`/`.L` Linux extensions), with
 no dependencies beyond the standard library.
