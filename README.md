@@ -1,6 +1,13 @@
 # p9
 
+[![CI](https://github.com/sandgorgon/9p/actions/workflows/ci.yml/badge.svg)](https://github.com/sandgorgon/9p/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/sandgorgon/9p)](LICENSE)
+
+[![Go](https://img.shields.io/badge/go-blue?logo=go&logoColor=white)](https://github.com/topics/go)
+[![Plan 9](https://img.shields.io/badge/plan9-lightgrey)](https://github.com/topics/plan9)
+[![9P2000](https://img.shields.io/badge/9p2000-lightgrey)](https://github.com/topics/9p2000)
+[![Filesystem](https://img.shields.io/badge/filesystem-lightgrey)](https://github.com/topics/filesystem)
+[![Network Protocol](https://img.shields.io/badge/network--protocol-lightgrey)](https://github.com/topics/network-protocol)
 
 A pure-Go implementation of the Plan 9 filesystem protocol, **9P2000**
 (the original 1992 spec — not the `.u`/`.L` Linux extensions), with
