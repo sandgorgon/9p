@@ -6,10 +6,10 @@ import (
 	"net"
 	"testing"
 
-	p9 "p9"
-	"p9/client"
-	"p9/examples/memfs"
-	"p9/server"
+	p9 "github.com/sandgorgon/9p"
+	"github.com/sandgorgon/9p/client"
+	"github.com/sandgorgon/9p/examples/memfs"
+	"github.com/sandgorgon/9p/server"
 )
 
 func newTestClient(t *testing.T) *client.Client {

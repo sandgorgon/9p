@@ -12,8 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	p9 "p9"
-	"p9/server"
+	p9 "github.com/sandgorgon/9p"
+	"github.com/sandgorgon/9p/server"
 )
 
 type node struct {

@@ -10,8 +10,8 @@ import (
 	"path"
 	"strings"
 
-	p9 "p9"
-	"p9/client"
+	p9 "github.com/sandgorgon/9p"
+	"github.com/sandgorgon/9p/client"
 )
 
 func main() {

@@ -10,9 +10,9 @@ import (
 	"net"
 	"os"
 
-	"p9/examples/dirfs"
-	"p9/examples/memfs"
-	"p9/server"
+	"github.com/sandgorgon/9p/examples/dirfs"
+	"github.com/sandgorgon/9p/examples/memfs"
+	"github.com/sandgorgon/9p/server"
 )
 
 func usage() {

@@ -1,3 +1,3 @@
-module p9
+module github.com/sandgorgon/9p
 
 go 1.22

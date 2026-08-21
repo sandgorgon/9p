@@ -4,7 +4,7 @@ import (
 	"errors"
 	"sync"
 
-	p9 "p9"
+	p9 "github.com/sandgorgon/9p"
 )
 
 // callMux tracks in-flight requests by tag so replies read off the

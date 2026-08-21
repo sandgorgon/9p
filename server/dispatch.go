@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	p9 "p9"
+	p9 "github.com/sandgorgon/9p"
 )
 
 func errReply(err error) *p9.RerrorFcall {

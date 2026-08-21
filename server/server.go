@@ -9,7 +9,7 @@ import (
 	"io"
 	"net"
 
-	p9 "p9"
+	p9 "github.com/sandgorgon/9p"
 )
 
 // FileSystem is the backend a Server serves over 9P2000. Attach is

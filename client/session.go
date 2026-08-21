@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 
-	p9 "p9"
+	p9 "github.com/sandgorgon/9p"
 )
 
 // Attach attaches to aname on the server as uname, returning a Fid

@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	p9 "p9"
-	"p9/client"
-	"p9/examples/dirfs"
-	"p9/server"
+	p9 "github.com/sandgorgon/9p"
+	"github.com/sandgorgon/9p/client"
+	"github.com/sandgorgon/9p/examples/dirfs"
+	"github.com/sandgorgon/9p/server"
 )
 
 func newTestClient(t *testing.T, root string) *client.Client {

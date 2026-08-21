@@ -11,7 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	p9 "p9"
+	p9 "github.com/sandgorgon/9p"
 )
 
 // Client is a connection to a 9P2000 server, already past version

@@ -8,6 +8,10 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-08-20
+
+Initial release.
+
 ### Added
 
 - `p9`: 9P2000 wire encoding — message types, `Marshal`/`Unmarshal`,
@@ -31,4 +35,10 @@ once a first tagged release is cut.
 - GitHub Actions CI: build, vet, `gofmt` check, `go test -race`, and
   a `FuzzUnmarshal` smoke run on every push and pull request.
 
-[Unreleased]: https://github.com/sandgorgon/9p/commits/master
+### Changed
+
+- Module path set to `github.com/sandgorgon/9p` (was the bare `p9`),
+  so `go get github.com/sandgorgon/9p` works.
+
+[Unreleased]: https://github.com/sandgorgon/9p/compare/v0.1.0...master
+[0.1.0]: https://github.com/sandgorgon/9p/releases/tag/v0.1.0

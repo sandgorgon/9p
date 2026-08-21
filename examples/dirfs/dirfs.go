@@ -16,8 +16,8 @@ import (
 	"strings"
 	"sync"
 
-	p9 "p9"
-	"p9/server"
+	p9 "github.com/sandgorgon/9p"
+	"github.com/sandgorgon/9p/server"
 )
 
 // FS exports the directory tree rooted at a local path.

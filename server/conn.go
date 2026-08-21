@@ -6,7 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	p9 "p9"
+	p9 "github.com/sandgorgon/9p"
 )
 
 // openFile is the server-side state for one client fid. Its file

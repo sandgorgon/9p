@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	p9 "p9"
+	p9 "github.com/sandgorgon/9p"
 )
 
 // Fid is a client handle for a file on the server, analogous to a

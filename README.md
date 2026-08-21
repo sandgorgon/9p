@@ -14,7 +14,7 @@ A pure-Go implementation of the Plan 9 filesystem protocol, **9P2000**
 no dependencies beyond the standard library.
 
 ```
-go get p9
+go get github.com/sandgorgon/9p
 ```
 
 ## Packages

@@ -7,7 +7,7 @@ import (
 	"io"
 	"sync"
 
-	p9 "p9"
+	p9 "github.com/sandgorgon/9p"
 )
 
 // ioHeaderSize is a conservative estimate of the non-data overhead

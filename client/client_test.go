@@ -7,7 +7,7 @@ import (
 	"net"
 	"testing"
 
-	p9 "p9"
+	p9 "github.com/sandgorgon/9p"
 )
 
 // fakeServer is a minimal hand-rolled 9P2000 server used only to
