@@ -1,6 +1,7 @@
 # p9
 
 [![CI](https://github.com/sandgorgon/9p/actions/workflows/ci.yml/badge.svg)](https://github.com/sandgorgon/9p/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/sandgorgon/9p)](https://github.com/sandgorgon/9p/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/sandgorgon/9p)](LICENSE)
 
 [![Go](https://img.shields.io/badge/go-blue?logo=go&logoColor=white)](https://github.com/topics/go)
