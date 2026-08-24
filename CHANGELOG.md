@@ -8,6 +8,8 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-23
+
 ### Fixed
 
 - `server`: `Tclunk` and `Tremove` discarded whatever error
