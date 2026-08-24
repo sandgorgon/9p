@@ -1,3 +1,3 @@
 module github.com/sandgorgon/9p
 
-go 1.22
+go 1.26

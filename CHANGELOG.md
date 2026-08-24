@@ -8,6 +8,10 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+### Changed
+
+- Bumped `go.mod`'s `go` directive from 1.22 to 1.26.
+
 ## [0.2.0] - 2026-08-23
 
 ### Added
