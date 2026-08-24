@@ -1,10 +1,12 @@
 package server_test
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
 	"testing"
+	"time"
 
 	p9 "github.com/sandgorgon/9p"
 	"github.com/sandgorgon/9p/client"
@@ -178,5 +180,59 @@ func TestUnknownFid(t *testing.T) {
 	var rerr *p9.RerrorFcall
 	if !errors.As(err, &rerr) {
 		t.Errorf("error = %v (%T), want *p9.RerrorFcall", err, err)
+	}
+}
+
+type connCtxKey struct{}
+
+// recordingFS wraps a FileSystem to capture the context Attach was
+// called with.
+type recordingFS struct {
+	fs  server.FileSystem
+	got chan any
+}
+
+func (r *recordingFS) Attach(ctx context.Context, uname, aname string) (server.File, error) {
+	r.got <- ctx.Value(connCtxKey{})
+	return r.fs.Attach(ctx, uname, aname)
+}
+
+func TestConnContext(t *testing.T) {
+	rec := &recordingFS{fs: memfs.New(), got: make(chan any, 1)}
+	srv := &server.Server{
+		FS: rec,
+		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
+			return context.WithValue(ctx, connCtxKey{}, "hello")
+		},
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	c, err := client.NewClient(conn)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	if _, err := c.Attach("glenda", ""); err != nil {
+		t.Fatalf("Attach: %v", err)
+	}
+
+	select {
+	case got := <-rec.got:
+		if got != "hello" {
+			t.Errorf("ctx.Value in Attach = %v, want %q", got, "hello")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for Attach")
 	}
 }

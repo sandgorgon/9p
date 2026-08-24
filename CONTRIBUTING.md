@@ -18,6 +18,58 @@ go test ./...
 No other setup is required — no `go.sum`, no toolchain beyond `go`
 itself.
 
+## Branching (Gitflow)
+
+This repo follows [Gitflow](https://nvie.com/posts/a-successful-git-branching-model/).
+Two branches are permanent; everything else is a short-lived branch
+merged in via PR and then deleted.
+
+- **`master`** — release history only. Every commit on it is a
+  tagged release (`vX.Y.Z`). Never commit to it directly; it only
+  moves via a `release/*` or `hotfix/*` merge.
+- **`develop`** — the integration branch, and GitHub's default
+  branch. Unreleased work accumulates here, mirrored by the
+  `[Unreleased]` section of `CHANGELOG.md`. Never commit to it
+  directly either — merge in via PR from a `feature/*` branch.
+
+Short-lived branch types:
+
+| Branch      | Cut from  | Merges into        | Naming             | Purpose                                  |
+|-------------|-----------|---------------------|--------------------|-------------------------------------------|
+| `feature/*` | `develop` | `develop`           | `feature/<name>`   | New work, in progress or small changes    |
+| `release/*` | `develop` | `master` + `develop`| `release/<X.Y.Z>`  | Stabilize a release (version bump, final CHANGELOG edits, no new features) |
+| `fix/*`     | `develop` | `develop`           | `fix/<name>`       | Bug fix that isn't urgent enough for a hotfix |
+| `hotfix/*`  | `master`  | `master` + `develop`| `hotfix/<name>`    | Urgent production fix, released outside the normal release cycle |
+
+Everyday work (the common case):
+
+```
+git checkout develop
+git pull
+git checkout -b feature/my-change
+# ... commit work ...
+```
+
+Open the PR against `develop`, not `master`. Once merged, delete the
+branch — it's disposable.
+
+Cutting a release:
+
+```
+git checkout -b release/X.Y.Z develop
+# bump any version references, move CHANGELOG's [Unreleased]
+# entries under a new [X.Y.Z] - YYYY-MM-DD heading
+git checkout master && git merge --no-ff release/X.Y.Z
+git tag vX.Y.Z
+git checkout develop && git merge --no-ff release/X.Y.Z
+git push origin master develop vX.Y.Z
+git branch -d release/X.Y.Z
+```
+
+A `hotfix/*` branch follows the same shape but starts from `master`
+instead of `develop`, for a fix that can't wait for the next regular
+release.
+
 ## Before you send a PR
 
 Run the same checks CI runs:
