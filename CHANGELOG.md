@@ -8,6 +8,22 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-23
+
+### Fixed
+
+- `client.File.ReadDir`/`ReadDirContext`: silently returned an
+  incomplete listing, with no error, for any directory whose encoded
+  entries didn't fit in one negotiated-`msize` read. `ReadDirContext`
+  went through the same `readAt` helper used for regular file reads,
+  which treats a reply shorter than requested as end-of-file — correct
+  for `io.ReaderAt`, but wrong for directory reads: `server.MarshalDir`
+  (added in 0.2.0) only ever returns whole `Stat` entries, so it
+  returns fewer bytes than requested on essentially every read short
+  of the last. `ReadDirContext` now issues its own `Tread` calls and
+  stops only on a truly empty reply, matching the 9P2000 directory-read
+  convention.
+
 ## [0.2.0] - 2026-08-23
 
 ### Added
