@@ -8,6 +8,14 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+### Changed
+
+- Bumped the fuzz smoke test's `-fuzztime` from 20s to 30s (CI and
+  `CONTRIBUTING.md` both), after it flaked once on a `master` CI run
+  with `context deadline exceeded` right at the 20s boundary — no
+  crasher found, just the fuzz engine's own deadline racing against
+  `-fuzztime`'s cutoff on a loaded runner.
+
 ## [0.4.0] - 2026-08-23
 
 ### Fixed
