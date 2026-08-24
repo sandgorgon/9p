@@ -43,6 +43,10 @@ type File interface {
 	Read(ctx context.Context, offset int64, p []byte) (int, error)
 	Write(ctx context.Context, offset int64, p []byte) (int, error)
 	Remove(ctx context.Context) error
+
+	// Close's error is reported to the client as an Rerror in reply
+	// to whichever of Tclunk or Tremove triggered it — but the fid is
+	// released either way; a failing Close never leaves it dangling.
 	Close() error
 }
 

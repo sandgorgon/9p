@@ -156,8 +156,14 @@ func (c *conn) tWrite(ctx context.Context, m *p9.TwriteFcall) p9.Message {
 
 func (c *conn) tClunk(m *p9.TclunkFcall) p9.Message {
 	of, ok := c.delFid(m.Fid)
-	if ok {
-		of.get().Close()
+	if !ok {
+		return &p9.RclunkFcall{}
+	}
+	// The fid is released either way — delFid already ran above — but
+	// a Close error is still reported, per File's documented contract
+	// that every method's error reaches the client.
+	if err := of.get().Close(); err != nil {
+		return errReply(err)
 	}
 	return &p9.RclunkFcall{}
 }
@@ -169,7 +175,9 @@ func (c *conn) tRemove(ctx context.Context, m *p9.TremoveFcall) p9.Message {
 	}
 	f := of.get()
 	err := f.Remove(ctx)
-	f.Close()
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
 	if err != nil {
 		return errReply(err)
 	}

@@ -8,6 +8,16 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+### Fixed
+
+- `server`: `Tclunk` and `Tremove` discarded whatever error
+  `File.Close` returned, always replying success regardless — despite
+  `File`'s own doc comment promising every method's error reaches the
+  client as an `Rerror`. `Tclunk` now reports a `Close` error as an
+  `Rerror`; `Tremove` does the same when `Remove` itself succeeded but
+  the `Close` that follows it doesn't. The fid is released either way
+  in both cases, matching normal 9P2000 clunk semantics.
+
 ## [0.3.0] - 2026-08-23
 
 ### Added
