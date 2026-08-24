@@ -18,6 +18,27 @@ go test ./...
 No other setup is required — no `go.sum`, no toolchain beyond `go`
 itself.
 
+## Branching
+
+- `master` is the release branch: every commit on it corresponds to
+  a tagged release, and it only moves via a merge from `develop`
+  when a release is cut.
+- `develop` is the integration branch for unreleased work — it's
+  where the `[Unreleased]` section of `CHANGELOG.md` accumulates.
+- Every change, including small ones, goes on its own branch cut
+  from `develop` (`feature/<short-name>`, or `fix/<short-name>` for
+  bug fixes), and is merged back into `develop` via PR — never
+  commit directly to `develop` or `master`.
+
+```
+git checkout develop
+git pull
+git checkout -b feature/my-change
+# ... commit work ...
+```
+
+Open the PR against `develop`, not `master`.
+
 ## Before you send a PR
 
 Run the same checks CI runs:
