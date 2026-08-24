@@ -53,6 +53,41 @@ func (c *Client) OpenContext(ctx context.Context, path string, mode p9.Mode) (*F
 	return &File{fid: fid, iounit: iounit}, nil
 }
 
+// Create walks from the client's attached root (see Attach) to
+// path's parent directory, creates path's final element there, and
+// returns a *File open for I/O on it — Open's write-side
+// counterpart. perm and mode are Fid.Create's own parameters
+// (Tcreate's Perm and Mode fields); see its doc for exactly what
+// they mean.
+func (c *Client) Create(path string, perm p9.Mode, mode p9.Mode) (*File, error) {
+	return c.CreateContext(context.Background(), path, perm, mode)
+}
+
+func (c *Client) CreateContext(ctx context.Context, path string, perm p9.Mode, mode p9.Mode) (*File, error) {
+	c.rootMu.RLock()
+	root := c.root
+	c.rootMu.RUnlock()
+	if root == nil {
+		return nil, errors.New("client: Create: not attached")
+	}
+	elems := splitPath(path)
+	if len(elems) == 0 {
+		return nil, errors.New("client: Create: empty path")
+	}
+	dir, name := elems[:len(elems)-1], elems[len(elems)-1]
+
+	fid, err := root.WalkContext(ctx, dir...)
+	if err != nil {
+		return nil, err
+	}
+	_, iounit, err := fid.CreateContext(ctx, name, perm, mode)
+	if err != nil {
+		fid.ClunkContext(ctx)
+		return nil, err
+	}
+	return &File{fid: fid, iounit: iounit}, nil
+}
+
 func splitPath(p string) []string {
 	var out []string
 	start := 0

@@ -8,6 +8,20 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-23
+
+### Added
+
+- `client.Client.Create`/`CreateContext`: the write-side counterpart
+  to `Client.Open` — walks to path's parent, creates its final
+  element there, and returns a `*File` open for I/O on it. Previously
+  `Fid.Create` existed at the wire level but nothing in the public API
+  could read or write the file it created.
+
+### Changed
+
+- Bumped `go.mod`'s `go` directive from 1.22 to 1.26.
+
 ## [0.2.1] - 2026-08-23
 
 ### Fixed
