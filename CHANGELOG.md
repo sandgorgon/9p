@@ -8,6 +8,17 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+### Added
+
+- `server.Server.ConnContext`: an optional hook, called once per
+  accepted connection before its requests are served, to build that
+  connection's base `context.Context` — for per-connection data such
+  as a TLS client identity to reach `FileSystem.Attach` and every
+  `File` method. Mirrors `net/http.Server.ConnContext`.
+- `server.Server.ServeConnContext`: `ServeConn` with an explicit base
+  context, for callers that build their own per-connection context by
+  hand instead of going through `Serve`/`ConnContext`.
+
 ## [0.1.0] - 2026-08-20
 
 Initial release.

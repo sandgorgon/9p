@@ -32,9 +32,10 @@ func (o *openFile) set(f File) {
 }
 
 type conn struct {
-	srv   *Server
-	rwc   io.ReadWriteCloser
-	msize atomic.Uint32
+	srv     *Server
+	rwc     io.ReadWriteCloser
+	baseCtx context.Context
+	msize   atomic.Uint32
 
 	writeMu sync.Mutex
 
@@ -43,10 +44,11 @@ type conn struct {
 	inflight map[p9.Tag]context.CancelFunc
 }
 
-func (s *Server) newConn(rwc io.ReadWriteCloser) *conn {
+func (s *Server) newConn(ctx context.Context, rwc io.ReadWriteCloser) *conn {
 	c := &conn{
 		srv:      s,
 		rwc:      rwc,
+		baseCtx:  ctx,
 		fids:     make(map[p9.Fid]*openFile),
 		inflight: make(map[p9.Tag]context.CancelFunc),
 	}
@@ -114,7 +116,7 @@ func (c *conn) serve() error {
 		if err != nil {
 			return err
 		}
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(c.baseCtx)
 		c.mu.Lock()
 		c.inflight[tag] = cancel
 		c.mu.Unlock()

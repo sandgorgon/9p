@@ -53,6 +53,24 @@ type Server struct {
 	// Msize caps the message size the server will negotiate with a
 	// client. Zero means p9.DefaultMsize.
 	Msize uint32
+
+	// ConnContext, if non-nil, is called by Serve once per accepted
+	// connection — right after Accept, before any 9P messages are
+	// read on it — with a fresh context.Background() and the
+	// connection. Its return value becomes the base context for
+	// every request handled on that connection, including the
+	// Attach call: a caller doing its own per-connection setup (a
+	// TLS handshake in particular) can stash whatever it learns via
+	// context.WithValue, and a FileSystem/File implementation
+	// recovers it from ctx.
+	//
+	// ConnContext is not called by ServeConnContext, which is the
+	// lower-level entry point for callers that build their own base
+	// context directly instead of relying on this hook — see
+	// ServeConnContext.
+	//
+	// Mirrors net/http.Server.ConnContext.
+	ConnContext func(ctx context.Context, c net.Conn) context.Context
 }
 
 func (s *Server) maxMsize() uint32 {
@@ -62,8 +80,10 @@ func (s *Server) maxMsize() uint32 {
 	return s.Msize
 }
 
-// Serve accepts connections on l, serving each with ServeConn in its
-// own goroutine, until Accept returns an error.
+// Serve accepts connections on l, serving each in its own goroutine
+// until Accept returns an error. For each connection it calls
+// ConnContext (if set) to build that connection's base context, then
+// serves it via ServeConnContext.
 func (s *Server) Serve(l net.Listener) error {
 	for {
 		nc, err := l.Accept()
@@ -72,14 +92,30 @@ func (s *Server) Serve(l net.Listener) error {
 		}
 		go func() {
 			defer nc.Close()
-			s.ServeConn(nc)
+			ctx := context.Background()
+			if s.ConnContext != nil {
+				ctx = s.ConnContext(ctx, nc)
+			}
+			s.ServeConnContext(ctx, nc)
 		}()
 	}
 }
 
 // ServeConn serves a single connection until it errors or the peer
 // closes it, then returns the error that ended it (io.EOF on a
-// clean close).
+// clean close). ServeConn(rwc) is equivalent to
+// ServeConnContext(context.Background(), rwc).
 func (s *Server) ServeConn(rwc io.ReadWriteCloser) error {
-	return s.newConn(rwc).serve()
+	return s.ServeConnContext(context.Background(), rwc)
+}
+
+// ServeConnContext is ServeConn with an explicit base context: ctx
+// becomes the base for every request handled on rwc, including the
+// Attach call, exactly as if it were ConnContext's return value.
+// Unlike Serve, ServeConnContext never calls ConnContext itself — it
+// is the entry point for a caller that already did its own
+// per-connection setup (a TLS handshake in particular) and built ctx
+// by hand, bypassing Serve's accept loop entirely.
+func (s *Server) ServeConnContext(ctx context.Context, rwc io.ReadWriteCloser) error {
+	return s.newConn(ctx, rwc).serve()
 }
