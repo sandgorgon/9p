@@ -8,6 +8,8 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-23
+
 ### Added
 
 - `client.Client.Create`/`CreateContext`: the write-side counterpart
