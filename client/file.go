@@ -236,37 +236,49 @@ func (f *File) ReadDir() ([]p9.Stat, error) {
 	return f.ReadDirContext(context.Background())
 }
 
+// ReadDirContext deliberately doesn't go through readAt: a directory
+// Read (server.MarshalDir in particular) only ever returns whole Stat
+// entries, so a reply shorter than the requested Count is normal
+// mid-listing behavior, not end-of-file — unlike a regular file read,
+// where readAt's "short read means EOF" convention is exactly what
+// io.ReaderAt calls for. The 9P directory-read convention is instead
+// to keep reading at growing offsets until a read returns zero bytes.
 func (f *File) ReadDirContext(ctx context.Context) ([]p9.Stat, error) {
 	var stats []p9.Stat
 	var off int64
 	for {
-		buf := make([]byte, f.maxIO())
-		n, err := f.readAt(ctx, buf, off)
-		if n > 0 {
-			chunk := buf[:n]
-			for len(chunk) > 0 {
-				if len(chunk) < 2 {
-					return stats, errors.New("client: ReadDir: truncated entry")
-				}
-				size := int(binary.LittleEndian.Uint16(chunk))
-				total := 2 + size
-				if total > len(chunk) {
-					return stats, errors.New("client: ReadDir: truncated entry")
-				}
-				st, serr := p9.UnmarshalStat(chunk[:total])
-				if serr != nil {
-					return stats, serr
-				}
-				stats = append(stats, st)
-				chunk = chunk[total:]
-			}
-			off += int64(n)
-		}
-		if err == io.EOF {
-			return stats, nil
-		}
+		count := f.maxIO()
+		reply, err := f.fid.c.rpc(ctx, &p9.TreadFcall{
+			Fid: f.fid.fid, Offset: uint64(off), Count: uint32(count),
+		})
 		if err != nil {
 			return stats, err
 		}
+		rr, ok := reply.(*p9.RreadFcall)
+		if !ok {
+			return stats, mismatchErr(p9.Rread, reply)
+		}
+		if len(rr.Data) == 0 {
+			return stats, nil
+		}
+
+		chunk := rr.Data
+		for len(chunk) > 0 {
+			if len(chunk) < 2 {
+				return stats, errors.New("client: ReadDir: truncated entry")
+			}
+			size := int(binary.LittleEndian.Uint16(chunk))
+			total := 2 + size
+			if total > len(chunk) {
+				return stats, errors.New("client: ReadDir: truncated entry")
+			}
+			st, serr := p9.UnmarshalStat(chunk[:total])
+			if serr != nil {
+				return stats, serr
+			}
+			stats = append(stats, st)
+			chunk = chunk[total:]
+		}
+		off += int64(len(rr.Data))
 	}
 }
