@@ -35,4 +35,4 @@ jobs:
         run: go test -race ./...
 
       - name: Fuzz smoke test
-        run: go test -run=^$ -fuzz=FuzzUnmarshal -fuzztime=20s .
+        run: go test -run=^$ -fuzz=FuzzUnmarshal -fuzztime=30s .
