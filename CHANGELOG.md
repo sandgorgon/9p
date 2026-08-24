@@ -18,6 +18,19 @@ once a first tagged release is cut.
 - `server.Server.ServeConnContext`: `ServeConn` with an explicit base
   context, for callers that build their own per-connection context by
   hand instead of going through `Serve`/`ConnContext`.
+- `server.MarshalDir`: encodes a `[]p9.Stat` and a client-requested
+  offset/buffer into a directory `Read` reply, handling the
+  whole-entries-only, never-split-a-Stat-blob contract 9P2000
+  directory reads require so a `server.File` implementation doesn't
+  have to reimplement that bookkeeping itself.
+
+### Fixed
+
+- `examples/memfs` and `examples/dirfs`: directory `Read` could split
+  a `Stat` blob across a read boundary when a directory's listing
+  exceeded the client's requested buffer size, corrupting the reply
+  (`client.File.ReadDir` would fail with "truncated entry"). Both now
+  use `server.MarshalDir`, which returns whole entries only.
 
 ## [0.1.0] - 2026-08-20
 

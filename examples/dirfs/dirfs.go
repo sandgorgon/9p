@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -256,29 +255,26 @@ func (f *file) Read(ctx context.Context, offset int64, p []byte) (int, error) {
 	return osf.ReadAt(p, offset)
 }
 
-// readDir renders path's children as a concatenation of Stat blobs,
-// the wire format a 9P2000 directory read returns. os.ReadDir
-// returns entries sorted by name, so repeated reads at growing
-// offsets see a consistent sequence as long as the directory isn't
-// concurrently modified.
+// readDir lists path's children as Stat entries — os.ReadDir returns
+// them sorted by name, so repeated reads at growing offsets see a
+// consistent sequence as long as the directory isn't concurrently
+// modified — and hands them to server.MarshalDir to satisfy the
+// directory Read contract (whole entries only, never split across a
+// call).
 func (f *file) readDir(path string, offset int64, p []byte) (int, error) {
-	entries, err := os.ReadDir(path)
+	dirEntries, err := os.ReadDir(path)
 	if err != nil {
 		return 0, err
 	}
-	var buf []byte
-	for _, e := range entries {
+	entries := make([]p9.Stat, 0, len(dirEntries))
+	for _, e := range dirEntries {
 		info, err := e.Info()
 		if err != nil {
 			continue // entry vanished between ReadDir and Info; skip it
 		}
-		st := statFromInfo(filepath.Join(path, e.Name()), info)
-		buf = append(buf, st.Marshal()...)
+		entries = append(entries, statFromInfo(filepath.Join(path, e.Name()), info))
 	}
-	if offset >= int64(len(buf)) {
-		return 0, io.EOF
-	}
-	return copy(p, buf[offset:]), nil
+	return server.MarshalDir(entries, offset, p)
 }
 
 func (f *file) Write(ctx context.Context, offset int64, p []byte) (int, error) {

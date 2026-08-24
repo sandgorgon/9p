@@ -190,9 +190,10 @@ func (f *file) Read(ctx context.Context, offset int64, p []byte) (int, error) {
 	return copy(p, n.data[offset:]), nil
 }
 
-// readDir renders n's children as a concatenation of Stat blobs, the
-// wire format a 9P2000 directory read returns, sorted by name so
-// that repeated reads at growing offsets see a consistent sequence.
+// readDir lists n's children as Stat entries, sorted by name so that
+// repeated reads at growing offsets see a consistent sequence, and
+// hands them to server.MarshalDir to satisfy the directory Read
+// contract (whole entries only, never split across a call).
 func readDir(n *node, offset int64, p []byte) (int, error) {
 	names := make([]string, 0, len(n.children))
 	for name := range n.children {
@@ -200,24 +201,20 @@ func readDir(n *node, offset int64, p []byte) (int, error) {
 	}
 	sort.Strings(names)
 
-	var buf []byte
-	for _, name := range names {
+	entries := make([]p9.Stat, len(names))
+	for i, name := range names {
 		c := n.children[name]
 		mode := c.perm
 		if c.dir {
 			mode |= p9.DMDIR
 		}
-		st := p9.Stat{
+		entries[i] = p9.Stat{
 			Qid: c.qid, Mode: mode, Atime: c.atime, Mtime: c.mtime,
 			Length: uint64(len(c.data)), Name: c.name,
 			Uid: "glenda", Gid: "glenda", Muid: "glenda",
 		}
-		buf = append(buf, st.Marshal()...)
 	}
-	if offset >= int64(len(buf)) {
-		return 0, io.EOF
-	}
-	return copy(p, buf[offset:]), nil
+	return server.MarshalDir(entries, offset, p)
 }
 
 func (f *file) Write(ctx context.Context, offset int64, p []byte) (int, error) {
