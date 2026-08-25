@@ -58,6 +58,31 @@ type Server struct {
 	// client. Zero means p9.DefaultMsize.
 	Msize uint32
 
+	// MaxConcurrentRequests caps how many requests from one connection
+	// may be dispatched into FS at once. Zero means unlimited, matching
+	// today's behavior. 9P2000 lets a client have many tagged requests
+	// outstanding on one connection at once (see Tflush); without this,
+	// a single connection can drive an unbounded number of concurrent
+	// calls into FS just by pipelining requests faster than it reads
+	// replies.
+	//
+	// Once the limit is reached, a new request waits for a slot before
+	// it is dispatched. That wait never stalls the connection's ability
+	// to read and act on further messages in the meantime — in
+	// particular Tflush, which always runs immediately regardless of
+	// the limit, since it's a client's only way to free a slot held by
+	// a stuck request. A request flushed before it ever acquires a slot
+	// gets no reply, exactly as if it had been flushed after starting.
+	//
+	// This bounds concurrent work dispatched into FS, not how many
+	// requests a client can have pending on the connection: a client
+	// that pipelines far more requests than this limit still causes one
+	// idle, FS-untouched goroutine per pending request until a slot
+	// frees or it's flushed.
+	//
+	// Mirrors golang.org/x/net/http2.Server.MaxConcurrentStreams.
+	MaxConcurrentRequests uint32
+
 	// ConnContext, if non-nil, is called by Serve once per accepted
 	// connection — right after Accept, before any 9P messages are
 	// read on it — with a fresh context.Background() and the
