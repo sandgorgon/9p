@@ -8,6 +8,8 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-24
+
 ### Added
 
 - `server.Server.MaxConcurrentRequests`: caps how many requests from
