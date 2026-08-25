@@ -8,6 +8,17 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+### Added
+
+- `server.Server.MaxConcurrentRequests`: caps how many requests from
+  one connection are dispatched into `FS` at once. 9P2000 lets a
+  client pipeline any number of tagged requests on a single
+  connection, and until now `Server` spawned an unconditional
+  goroutine into `FS` for every one it read, with no way for a caller
+  to bound that. Zero (the default) keeps today's unlimited behavior.
+  `Tflush` is always exempt from the limit, so a client can still
+  cancel a request holding a slot even at the concurrency cap.
+
 ### Changed
 
 - Bumped the fuzz smoke test's `-fuzztime` from 20s to 30s (CI and
