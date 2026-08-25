@@ -42,6 +42,11 @@ type conn struct {
 	mu       sync.Mutex
 	fids     map[p9.Fid]*openFile
 	inflight map[p9.Tag]context.CancelFunc
+
+	// sem bounds how many requests dispatchOne runs into srv.FS at
+	// once; nil when Server.MaxConcurrentRequests == 0 (unlimited).
+	// Tflush is exempt from it — see dispatchOne.
+	sem chan struct{}
 }
 
 func (s *Server) newConn(ctx context.Context, rwc io.ReadWriteCloser) *conn {
@@ -53,6 +58,9 @@ func (s *Server) newConn(ctx context.Context, rwc io.ReadWriteCloser) *conn {
 		inflight: make(map[p9.Tag]context.CancelFunc),
 	}
 	c.msize.Store(s.maxMsize())
+	if s.MaxConcurrentRequests > 0 {
+		c.sem = make(chan struct{}, s.MaxConcurrentRequests)
+	}
 	return c
 }
 
@@ -120,16 +128,54 @@ func (c *conn) serve() error {
 		c.mu.Lock()
 		c.inflight[tag] = cancel
 		c.mu.Unlock()
-		go c.handle(ctx, tag, msg, cancel)
+		go c.dispatchOne(ctx, tag, msg, cancel)
 	}
 }
 
-func (c *conn) handle(ctx context.Context, tag p9.Tag, msg p9.Message, cancel context.CancelFunc) {
+// dispatchOne runs one request's handler, first acquiring a
+// concurrency slot if the server limits them (Server.
+// MaxConcurrentRequests). Tflush is exempt from the limit: it must
+// always run immediately, even at the concurrency cap, since it's a
+// client's only way to cancel a request that's already holding a
+// slot — without the exemption, N long-running requests filling
+// every slot would make it impossible to ever flush one free again.
+//
+// Acquiring a slot never blocks serve's read loop: it happens here,
+// in a per-request goroutine, via a select against ctx, so the loop
+// stays free to keep reading — and immediately act on — a Tflush for
+// this very tag, or any other message, while this one waits.
+func (c *conn) dispatchOne(ctx context.Context, tag p9.Tag, msg p9.Message, cancel context.CancelFunc) {
+	if c.sem == nil {
+		c.handle(ctx, tag, msg, cancel, false)
+		return
+	}
+	if _, isFlush := msg.(*p9.TflushFcall); isFlush {
+		c.handle(ctx, tag, msg, cancel, false)
+		return
+	}
+	select {
+	case c.sem <- struct{}{}:
+		c.handle(ctx, tag, msg, cancel, true)
+	case <-ctx.Done():
+		// Flushed before it ever acquired a slot: per spec, no reply
+		// is owed for a request flushed before it started, so clean
+		// up as if it had never been read.
+		cancel()
+		c.mu.Lock()
+		delete(c.inflight, tag)
+		c.mu.Unlock()
+	}
+}
+
+func (c *conn) handle(ctx context.Context, tag p9.Tag, msg p9.Message, cancel context.CancelFunc, tookSlot bool) {
 	defer func() {
 		cancel()
 		c.mu.Lock()
 		delete(c.inflight, tag)
 		c.mu.Unlock()
+		if tookSlot {
+			<-c.sem
+		}
 	}()
 	reply := c.dispatch(ctx, msg)
 	// A write failure here means the connection is dead; the read
