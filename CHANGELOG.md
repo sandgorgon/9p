@@ -8,6 +8,8 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-29
+
 ### Added
 
 - `cmd/9pc`: a `-net` flag (default `tcp`), passed through to
