@@ -15,7 +15,8 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", "localhost:5640", "server address")
+	net := flag.String("net", "tcp", "dial network (e.g. tcp, unix)")
+	addr := flag.String("addr", "localhost:5640", "server address (path when -net unix)")
 	uname := flag.String("uname", "glenda", "attach user name")
 	aname := flag.String("aname", "", "attach tree name")
 	flag.Parse()
@@ -26,7 +27,7 @@ func main() {
 	}
 	cmd, args := args[0], args[1:]
 
-	c, err := client.Dial("tcp", *addr)
+	c, err := client.Dial(*net, *addr)
 	if err != nil {
 		fatalf("dial: %v", err)
 	}
@@ -63,7 +64,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `usage: 9pc [-addr host:port] [-uname name] [-aname tree] <command> ...
+	fmt.Fprint(os.Stderr, `usage: 9pc [-net tcp|unix] [-addr host:port|path] [-uname name] [-aname tree] <command> ...
 
   9pc ls <path>
   9pc cat <path>
