@@ -8,6 +8,18 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-29
+
+### Added
+
+- `cmd/9pc`: a `-net` flag (default `tcp`), passed through to
+  `client.Dial` alongside `-addr`. `client.Dial`'s `network` parameter
+  was already a plain `net.Dial` passthrough, so `-net unix` with
+  `-addr` set to a socket path works today with no `client` changes —
+  the CLI just never exposed the option. Lets `9pc` script against a
+  local 9P server over a Unix domain socket instead of requiring a
+  TCP port.
+
 ## [0.5.0] - 2026-08-24
 
 ### Added
