@@ -8,6 +8,19 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-30
+
+### Added
+
+- `client.Fid.OpenFile`/`OpenFileContext` and `Fid.CreateFile`/
+  `CreateFileContext`, returning an I/O-capable `*File` positioned at
+  the fid instead of just a `Qid`. A caller that already holds a
+  walked `*Fid` (cheap, no I/O) can now get I/O on it directly,
+  instead of discarding the fid and re-walking by path string via
+  `Client.Open`/`Client.Create` just to obtain a `*File` — removing
+  one `Twalk` round-trip per open. `Client.Open`/`Client.Create` are
+  now implemented in terms of the new methods.
+
 ## [0.6.0] - 2026-08-29
 
 ### Added
