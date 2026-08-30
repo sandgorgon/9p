@@ -45,12 +45,12 @@ func (c *Client) OpenContext(ctx context.Context, path string, mode p9.Mode) (*F
 	if err != nil {
 		return nil, err
 	}
-	_, iounit, err := fid.OpenContext(ctx, mode)
+	f, err := fid.OpenFileContext(ctx, mode)
 	if err != nil {
 		fid.ClunkContext(ctx)
 		return nil, err
 	}
-	return &File{fid: fid, iounit: iounit}, nil
+	return f, nil
 }
 
 // Create walks from the client's attached root (see Attach) to
@@ -80,12 +80,12 @@ func (c *Client) CreateContext(ctx context.Context, path string, perm p9.Mode, m
 	if err != nil {
 		return nil, err
 	}
-	_, iounit, err := fid.CreateContext(ctx, name, perm, mode)
+	f, err := fid.CreateFileContext(ctx, name, perm, mode)
 	if err != nil {
 		fid.ClunkContext(ctx)
 		return nil, err
 	}
-	return &File{fid: fid, iounit: iounit}, nil
+	return f, nil
 }
 
 func splitPath(p string) []string {
