@@ -8,6 +8,15 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+### Fixed
+
+- `cmd/9pc`: `put` always went through Walk-parent + `Create` before
+  opening the remote file for write, but `Tcreate` on an existing
+  name is a protocol error, so `put` aborted on any remote path that
+  already existed (e.g. a server exposing a file meant to be edited
+  in place, not created). `put` now tries `Open` first and only
+  falls back to Walk+Create when the file doesn't exist yet.
+
 ## [0.7.0] - 2026-08-30
 
 ### Added
