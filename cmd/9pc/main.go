@@ -135,11 +135,9 @@ func runGet(c *client.Client, remote, local string) {
 	}
 }
 
-// runPut creates remote (which must not already exist) and copies
-// local's contents into it. Creation goes through root.Walk/Create
-// since the file doesn't exist yet for c.Open to walk to; the write
-// itself goes through client.File, reopening the file by path once
-// it exists.
+// runPut copies local's contents to remote, overwriting remote if it
+// already exists. It tries Open first; only if that fails (remote
+// doesn't exist yet) does it fall back to Walk-parent-and-Create.
 func runPut(c *client.Client, root *client.Fid, local, remote string) {
 	in, err := os.Open(local)
 	if err != nil {
@@ -147,23 +145,25 @@ func runPut(c *client.Client, root *client.Fid, local, remote string) {
 	}
 	defer in.Close()
 
-	dir, name := path.Split(remote)
-	if name == "" {
-		fatalf("put: remote path %q has no file name", remote)
-	}
-	target, err := root.Walk(splitPath(dir)...)
-	if err != nil {
-		fatalf("walk %s: %v", dir, err)
-	}
-	if _, _, err := target.Create(name, 0644, p9.OWRITE); err != nil {
-		target.Clunk()
-		fatalf("create %s: %v", remote, err)
-	}
-	target.Clunk()
-
 	out, err := c.Open(remote, p9.OWRITE)
 	if err != nil {
-		fatalf("open %s: %v", remote, err)
+		dir, name := path.Split(remote)
+		if name == "" {
+			fatalf("put: remote path %q has no file name", remote)
+		}
+		target, err := root.Walk(splitPath(dir)...)
+		if err != nil {
+			fatalf("walk %s: %v", dir, err)
+		}
+		_, _, err = target.Create(name, 0644, p9.OWRITE)
+		target.Clunk()
+		if err != nil {
+			fatalf("create %s: %v", remote, err)
+		}
+		out, err = c.Open(remote, p9.OWRITE)
+		if err != nil {
+			fatalf("open %s: %v", remote, err)
+		}
 	}
 	defer out.Close()
 	if _, err := io.Copy(out, in); err != nil {
