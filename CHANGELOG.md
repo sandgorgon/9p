@@ -8,6 +8,8 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-08-30
+
 ### Fixed
 
 - `cmd/9pc`: `put` always went through Walk-parent + `Create` before
