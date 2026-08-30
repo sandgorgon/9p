@@ -105,6 +105,36 @@ func (f *Fid) CreateContext(ctx context.Context, name string, perm p9.Mode, mode
 	return rc.Qid, rc.Iounit, nil
 }
 
+// OpenFile is Open, but returns an I/O-capable *File positioned at f
+// instead of just a Qid — f is consumed the same way Open leaves it
+// (opened in mode), just without discarding the fid to get there.
+func (f *Fid) OpenFile(mode p9.Mode) (*File, error) {
+	return f.OpenFileContext(context.Background(), mode)
+}
+
+func (f *Fid) OpenFileContext(ctx context.Context, mode p9.Mode) (*File, error) {
+	_, iounit, err := f.OpenContext(ctx, mode)
+	if err != nil {
+		return nil, err
+	}
+	return &File{fid: f, iounit: iounit}, nil
+}
+
+// CreateFile is Create, but returns an I/O-capable *File positioned
+// at the newly created child instead of just a Qid — matching
+// Create's own "repositions f itself onto the new file" semantics.
+func (f *Fid) CreateFile(name string, perm, mode p9.Mode) (*File, error) {
+	return f.CreateFileContext(context.Background(), name, perm, mode)
+}
+
+func (f *Fid) CreateFileContext(ctx context.Context, name string, perm, mode p9.Mode) (*File, error) {
+	_, iounit, err := f.CreateContext(ctx, name, perm, mode)
+	if err != nil {
+		return nil, err
+	}
+	return &File{fid: f, iounit: iounit}, nil
+}
+
 // Stat fetches f's metadata.
 func (f *Fid) Stat() (p9.Stat, error) {
 	return f.StatContext(context.Background())
