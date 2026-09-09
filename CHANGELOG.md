@@ -8,6 +8,8 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-09
+
 ### Added
 
 - `client.File.Rename`/`RenameContext` and `File.Remove`/
