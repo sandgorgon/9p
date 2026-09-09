@@ -1,7 +1,8 @@
 // Package dirfs is a server.FileSystem backend that exports a real
 // directory tree from the local filesystem, using only the standard
-// library. Every path it touches is validated to stay within the
-// configured root, so a client cannot walk ".." past it.
+// library. Every path it touches is resolved through an os.Root
+// opened on the exported directory, so a client cannot walk ".."
+// or follow a symlink at an intermediate path component past it.
 package dirfs
 
 import (
@@ -12,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -21,7 +23,8 @@ import (
 
 // FS exports the directory tree rooted at a local path.
 type FS struct {
-	root string // absolute, cleaned
+	root *os.Root
+	name string // base name of the root directory, reported as its own Stat name
 }
 
 // New returns an FS rooted at root, which must already exist and be
@@ -31,38 +34,33 @@ func New(root string) (*FS, error) {
 	if err != nil {
 		return nil, err
 	}
-	info, err := os.Stat(abs)
+	r, err := os.OpenRoot(abs)
 	if err != nil {
 		return nil, err
 	}
+	info, err := r.Stat(".")
+	if err != nil {
+		r.Close()
+		return nil, err
+	}
 	if !info.IsDir() {
+		r.Close()
 		return nil, fmt.Errorf("dirfs: %s: not a directory", root)
 	}
-	return &FS{root: filepath.Clean(abs)}, nil
+	return &FS{root: r, name: filepath.Base(abs)}, nil
 }
 
 // Attach ignores uname and aname: every attach sees the same tree,
 // rooted at the FS's configured directory.
 func (d *FS) Attach(ctx context.Context, uname, aname string) (server.File, error) {
-	return &file{fs: d, path: d.root}, nil
-}
-
-// within reports whether path is root itself or a descendant of it,
-// guarding every path this package constructs before it touches the
-// filesystem.
-func within(root, path string) bool {
-	rel, err := filepath.Rel(root, path)
-	if err != nil {
-		return false
-	}
-	return rel == "." || !strings.HasPrefix(rel, "..")
+	return &file{fs: d, path: "."}, nil
 }
 
 type file struct {
 	fs *FS
 
 	mu   sync.Mutex
-	path string
+	path string // relative to fs.root; "." is the root itself
 	osf  *os.File
 }
 
@@ -100,20 +98,25 @@ func (f *file) currentPath() string {
 }
 
 func (f *file) Qid() p9.Qid {
-	info, err := os.Lstat(f.currentPath())
+	path := f.currentPath()
+	info, err := f.fs.root.Lstat(path)
 	if err != nil {
 		return p9.Qid{}
 	}
-	return qidFor(f.currentPath(), info)
+	return qidFor(path, info)
 }
 
 func (f *file) Stat(ctx context.Context) (p9.Stat, error) {
 	path := f.currentPath()
-	info, err := os.Lstat(path)
+	info, err := f.fs.root.Lstat(path)
 	if err != nil {
 		return p9.Stat{}, err
 	}
-	return statFromInfo(path, info), nil
+	st := statFromInfo(path, info)
+	if path == "." {
+		st.Name = f.fs.name
+	}
+	return st, nil
 }
 
 // WStat supports renaming within the same directory, chmod, and
@@ -129,21 +132,26 @@ func (f *file) WStat(ctx context.Context, st p9.Stat) error {
 			return fmt.Errorf("dirfs: invalid name %q", st.Name)
 		}
 		newPath := filepath.Join(filepath.Dir(f.path), st.Name)
-		if !within(f.fs.root, newPath) {
-			return fmt.Errorf("dirfs: %q escapes root", st.Name)
-		}
-		if err := os.Rename(f.path, newPath); err != nil {
+		if err := f.fs.root.Rename(f.path, newPath); err != nil {
 			return err
 		}
 		f.path = newPath
 	}
 	if st.Mode != p9.Mode(^uint32(0)) {
-		if err := os.Chmod(f.path, os.FileMode(st.Mode&p9.DMPerm)); err != nil {
+		if err := f.fs.root.Chmod(f.path, os.FileMode(st.Mode&p9.DMPerm)); err != nil {
 			return err
 		}
 	}
 	if st.Length != ^uint64(0) {
-		if err := os.Truncate(f.path, int64(st.Length)); err != nil {
+		osf, err := f.fs.root.OpenFile(f.path, os.O_WRONLY, 0)
+		if err != nil {
+			return err
+		}
+		err = osf.Truncate(int64(st.Length))
+		if cerr := osf.Close(); err == nil {
+			err = cerr
+		}
+		if err != nil {
 			return err
 		}
 	}
@@ -157,18 +165,15 @@ func (f *file) Walk(ctx context.Context, name string) (server.File, error) {
 	}
 	var newPath string
 	if name == ".." {
-		if path == f.fs.root {
-			newPath = f.fs.root
+		if path == "." {
+			newPath = "."
 		} else {
 			newPath = filepath.Dir(path)
 		}
 	} else {
 		newPath = filepath.Join(path, name)
 	}
-	if !within(f.fs.root, newPath) {
-		return nil, fmt.Errorf("dirfs: %q escapes root", name)
-	}
-	if _, err := os.Lstat(newPath); err != nil {
+	if _, err := f.fs.root.Lstat(newPath); err != nil {
 		return nil, fmt.Errorf("dirfs: %s: %w", name, err)
 	}
 	return &file{fs: f.fs, path: newPath}, nil
@@ -176,7 +181,7 @@ func (f *file) Walk(ctx context.Context, name string) (server.File, error) {
 
 func (f *file) Open(ctx context.Context, mode p9.Mode) error {
 	path := f.currentPath()
-	info, err := os.Lstat(path)
+	info, err := f.fs.root.Lstat(path)
 	if err != nil {
 		return err
 	}
@@ -193,7 +198,7 @@ func (f *file) Open(ctx context.Context, mode p9.Mode) error {
 	if mode&p9.OTRUNC != 0 {
 		flag |= os.O_TRUNC
 	}
-	osf, err := os.OpenFile(path, flag, 0)
+	osf, err := f.fs.root.OpenFile(path, flag, 0)
 	if err != nil {
 		return err
 	}
@@ -209,13 +214,10 @@ func (f *file) Create(ctx context.Context, name string, perm p9.Mode, mode p9.Mo
 		return nil, fmt.Errorf("dirfs: invalid name %q", name)
 	}
 	newPath := filepath.Join(path, name)
-	if !within(f.fs.root, newPath) {
-		return nil, fmt.Errorf("dirfs: %q escapes root", name)
-	}
 
 	child := &file{fs: f.fs, path: newPath}
 	if perm.IsDir() {
-		if err := os.Mkdir(newPath, os.FileMode(perm&p9.DMPerm)); err != nil {
+		if err := f.fs.root.Mkdir(newPath, os.FileMode(perm&p9.DMPerm)); err != nil {
 			return nil, err
 		}
 		return child, nil
@@ -228,7 +230,7 @@ func (f *file) Create(ctx context.Context, name string, perm p9.Mode, mode p9.Mo
 	case p9.ORDWR:
 		flag = os.O_RDWR | os.O_CREATE | os.O_EXCL
 	}
-	osf, err := os.OpenFile(newPath, flag, os.FileMode(perm&p9.DMPerm))
+	osf, err := f.fs.root.OpenFile(newPath, flag, os.FileMode(perm&p9.DMPerm))
 	if err != nil {
 		return nil, err
 	}
@@ -238,7 +240,7 @@ func (f *file) Create(ctx context.Context, name string, perm p9.Mode, mode p9.Mo
 
 func (f *file) Read(ctx context.Context, offset int64, p []byte) (int, error) {
 	path := f.currentPath()
-	info, err := os.Lstat(path)
+	info, err := f.fs.root.Lstat(path)
 	if err != nil {
 		return 0, err
 	}
@@ -255,17 +257,23 @@ func (f *file) Read(ctx context.Context, offset int64, p []byte) (int, error) {
 	return osf.ReadAt(p, offset)
 }
 
-// readDir lists path's children as Stat entries — os.ReadDir returns
-// them sorted by name, so repeated reads at growing offsets see a
-// consistent sequence as long as the directory isn't concurrently
-// modified — and hands them to server.MarshalDir to satisfy the
-// directory Read contract (whole entries only, never split across a
-// call).
+// readDir lists path's children as Stat entries, sorted by name so
+// repeated reads at growing offsets see a consistent sequence as
+// long as the directory isn't concurrently modified, and hands them
+// to server.MarshalDir to satisfy the directory Read contract
+// (whole entries only, never split across a call).
 func (f *file) readDir(path string, offset int64, p []byte) (int, error) {
-	dirEntries, err := os.ReadDir(path)
+	dirf, err := f.fs.root.Open(path)
 	if err != nil {
 		return 0, err
 	}
+	defer dirf.Close()
+	dirEntries, err := dirf.ReadDir(-1)
+	if err != nil {
+		return 0, err
+	}
+	sort.Slice(dirEntries, func(i, j int) bool { return dirEntries[i].Name() < dirEntries[j].Name() })
+
 	entries := make([]p9.Stat, 0, len(dirEntries))
 	for _, e := range dirEntries {
 		info, err := e.Info()
@@ -289,7 +297,7 @@ func (f *file) Write(ctx context.Context, offset int64, p []byte) (int, error) {
 
 func (f *file) Remove(ctx context.Context) error {
 	f.Close()
-	return os.Remove(f.currentPath())
+	return f.fs.root.Remove(f.currentPath())
 }
 
 func (f *file) Close() error {

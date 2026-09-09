@@ -114,6 +114,42 @@ func TestReadDirAndCreate(t *testing.T) {
 	}
 }
 
+// A symlink planted at an intermediate path component must not let
+// Walk, Create, or WStat's rename destination escape root, even
+// though the joined path string still looks like it's inside root.
+func TestWalkCannotEscapeThroughSymlink(t *testing.T) {
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("outside root\n"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	dir := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(dir, "escape")); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	c := newTestClient(t, dir)
+	root, err := c.Attach("glenda", "")
+	if err != nil {
+		t.Fatalf("Attach: %v", err)
+	}
+
+	if _, err := root.Walk("escape", "secret.txt"); err == nil {
+		t.Fatal("Walk through symlinked intermediate component succeeded, want error")
+	}
+
+	if _, err := c.Open("/escape/secret.txt", p9.OREAD); err == nil {
+		t.Fatal("Open through symlinked intermediate component succeeded, want error")
+	}
+
+	if _, err := c.Create("/escape/new.txt", 0644, p9.OWRITE); err == nil {
+		t.Fatal("Create through symlinked intermediate component succeeded, want error")
+	}
+	if _, err := os.Lstat(filepath.Join(outside, "new.txt")); err == nil {
+		t.Fatal("Create through symlinked intermediate component wrote outside root")
+	}
+}
+
 // Walking ".." at the exported root clamps to the root itself
 // (chroot-style), rather than escaping it or erroring.
 func TestWalkCannotEscapeRoot(t *testing.T) {
