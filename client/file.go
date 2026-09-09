@@ -88,6 +88,43 @@ func (c *Client) CreateContext(ctx context.Context, path string, perm p9.Mode, m
 	return f, nil
 }
 
+// Symlink walks from the client's attached root (see Attach) to
+// path's parent directory and creates a symlink there named by
+// path's final element, pointing at target. Unlike Open/Create,
+// there's no *File to hand back — a symlink isn't opened for I/O —
+// so the fid used to create it is clunked before returning; a
+// caller wanting its metadata (Stat's Extension field) re-Stats the
+// path. Requires the connection to have negotiated 9P2000.u (see
+// WithUnixExtensions).
+func (c *Client) Symlink(path, target string) (p9.Qid, error) {
+	return c.SymlinkContext(context.Background(), path, target)
+}
+
+func (c *Client) SymlinkContext(ctx context.Context, path, target string) (p9.Qid, error) {
+	c.rootMu.RLock()
+	root := c.root
+	c.rootMu.RUnlock()
+	if root == nil {
+		return p9.Qid{}, errors.New("client: Symlink: not attached")
+	}
+	elems := splitPath(path)
+	if len(elems) == 0 {
+		return p9.Qid{}, errors.New("client: Symlink: empty path")
+	}
+	dir, name := elems[:len(elems)-1], elems[len(elems)-1]
+
+	fid, err := root.WalkContext(ctx, dir...)
+	if err != nil {
+		return p9.Qid{}, err
+	}
+	qid, err := fid.SymlinkContext(ctx, name, target)
+	fid.ClunkContext(ctx)
+	if err != nil {
+		return p9.Qid{}, err
+	}
+	return qid, nil
+}
+
 func splitPath(p string) []string {
 	var out []string
 	start := 0
@@ -338,7 +375,7 @@ func (f *File) ReadDirContext(ctx context.Context) ([]p9.Stat, error) {
 			if total > len(chunk) {
 				return stats, errors.New("client: ReadDir: truncated entry")
 			}
-			st, serr := p9.UnmarshalStat(chunk[:total])
+			st, serr := p9.UnmarshalStatVersion(chunk[:total], f.fid.c.unix.Load())
 			if serr != nil {
 				return stats, serr
 			}

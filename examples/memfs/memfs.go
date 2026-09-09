@@ -19,8 +19,9 @@ import (
 type node struct {
 	name     string
 	dir      bool
+	target   string // symlink target; "" means not a symlink
 	qid      p9.Qid
-	perm     p9.Mode // permission bits only; DMDIR is derived from dir
+	perm     p9.Mode // permission bits only; DMDIR/DMSYMLINK are derived
 	atime    uint32
 	mtime    uint32
 	data     []byte
@@ -39,16 +40,19 @@ type FS struct {
 // New returns an empty filesystem: a single root directory.
 func New() *FS {
 	fs := &FS{}
-	fs.root = fs.newNode("/", true, 0755)
+	fs.root = fs.newNode("/", true, 0755, "")
 	return fs
 }
 
-func (fs *FS) newNode(name string, dir bool, perm p9.Mode) *node {
+func (fs *FS) newNode(name string, dir bool, perm p9.Mode, target string) *node {
 	qtype := p9.QTFILE
-	if dir {
+	switch {
+	case dir:
 		qtype = p9.QTDIR
+	case target != "":
+		qtype = p9.QTSYMLINK
 	}
-	n := &node{name: name, dir: dir, perm: perm, qid: p9.Qid{Type: qtype, Path: fs.nextPath.Add(1)}}
+	n := &node{name: name, dir: dir, target: target, perm: perm, qid: p9.Qid{Type: qtype, Path: fs.nextPath.Add(1)}}
 	if dir {
 		n.children = make(map[string]*node)
 	}
@@ -78,16 +82,20 @@ func (f *file) statLocked() p9.Stat {
 	if n.dir {
 		mode |= p9.DMDIR
 	}
+	if n.target != "" {
+		mode |= p9.DMSYMLINK
+	}
 	return p9.Stat{
-		Qid:    n.qid,
-		Mode:   mode,
-		Atime:  n.atime,
-		Mtime:  n.mtime,
-		Length: uint64(len(n.data)),
-		Name:   n.name,
-		Uid:    "glenda",
-		Gid:    "glenda",
-		Muid:   "glenda",
+		Qid:       n.qid,
+		Mode:      mode,
+		Atime:     n.atime,
+		Mtime:     n.mtime,
+		Length:    uint64(len(n.data)),
+		Name:      n.name,
+		Uid:       "glenda",
+		Gid:       "glenda",
+		Muid:      "glenda",
+		Extension: n.target,
 	}
 }
 
@@ -148,6 +156,9 @@ func (f *file) Walk(ctx context.Context, name string) (server.File, error) {
 }
 
 func (f *file) Open(ctx context.Context, mode p9.Mode) error {
+	if f.n.target != "" {
+		return errors.New("memfs: cannot open a symlink")
+	}
 	if mode&p9.OTRUNC == 0 {
 		return nil
 	}
@@ -171,7 +182,26 @@ func (f *file) Create(ctx context.Context, name string, perm p9.Mode, mode p9.Mo
 	if _, exists := n.children[name]; exists {
 		return nil, fmt.Errorf("memfs: %s: already exists", name)
 	}
-	child := f.fs.newNode(name, perm.IsDir(), perm&^p9.DMDIR&p9.DMPerm)
+	child := f.fs.newNode(name, perm.IsDir(), perm&^p9.DMDIR&p9.DMPerm, "")
+	child.parent = n
+	n.children[name] = child
+	return &file{fs: f.fs, n: child}, nil
+}
+
+// Symlink implements server.SymlinkFile: it creates a symlink node
+// pointing at target, without validating it — nothing in this
+// package ever follows a symlink's target.
+func (f *file) Symlink(ctx context.Context, name, target string) (server.File, error) {
+	f.fs.mu.Lock()
+	defer f.fs.mu.Unlock()
+	n := f.n
+	if !n.dir {
+		return nil, errors.New("memfs: not a directory")
+	}
+	if _, exists := n.children[name]; exists {
+		return nil, fmt.Errorf("memfs: %s: already exists", name)
+	}
+	child := f.fs.newNode(name, false, 0777, target)
 	child.parent = n
 	n.children[name] = child
 	return &file{fs: f.fs, n: child}, nil
@@ -182,7 +212,7 @@ func (f *file) Read(ctx context.Context, offset int64, p []byte) (int, error) {
 	defer f.fs.mu.RUnlock()
 	n := f.n
 	if n.dir {
-		return readDir(n, offset, p)
+		return readDir(ctx, n, offset, p)
 	}
 	if offset >= int64(len(n.data)) {
 		return 0, io.EOF
@@ -194,7 +224,7 @@ func (f *file) Read(ctx context.Context, offset int64, p []byte) (int, error) {
 // repeated reads at growing offsets see a consistent sequence, and
 // hands them to server.MarshalDir to satisfy the directory Read
 // contract (whole entries only, never split across a call).
-func readDir(n *node, offset int64, p []byte) (int, error) {
+func readDir(ctx context.Context, n *node, offset int64, p []byte) (int, error) {
 	names := make([]string, 0, len(n.children))
 	for name := range n.children {
 		names = append(names, name)
@@ -208,13 +238,17 @@ func readDir(n *node, offset int64, p []byte) (int, error) {
 		if c.dir {
 			mode |= p9.DMDIR
 		}
+		if c.target != "" {
+			mode |= p9.DMSYMLINK
+		}
 		entries[i] = p9.Stat{
 			Qid: c.qid, Mode: mode, Atime: c.atime, Mtime: c.mtime,
 			Length: uint64(len(c.data)), Name: c.name,
 			Uid: "glenda", Gid: "glenda", Muid: "glenda",
+			Extension: c.target,
 		}
 	}
-	return server.MarshalDir(entries, offset, p)
+	return server.MarshalDirVersion(entries, offset, p, server.UnixFromContext(ctx))
 }
 
 func (f *file) Write(ctx context.Context, offset int64, p []byte) (int, error) {

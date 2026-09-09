@@ -6,9 +6,12 @@ import (
 )
 
 // encoder appends the little-endian wire encoding of 9P2000 values
-// to an underlying buffer.
+// to an underlying buffer. unix gates the 9P2000.u-only fields on
+// Stat and Tcreate: true only when the connection negotiated
+// VersionU.
 type encoder struct {
-	buf *bytes.Buffer
+	buf  *bytes.Buffer
+	unix bool
 }
 
 func (e *encoder) uint8(v uint8) { e.buf.WriteByte(v) }

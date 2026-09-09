@@ -51,3 +51,40 @@ func FuzzUnmarshal(f *testing.F) {
 		}
 	})
 }
+
+// FuzzUnmarshalUnix mirrors FuzzUnmarshal for the 9P2000.u decode
+// path (unix=true), which reads the additional Extension/Nuid/Ngid/
+// Nmuid fields on Stat and Tcreate — a separate decode path from
+// FuzzUnmarshal's, and one just as exposed to untrusted network
+// input on a connection that negotiated VersionU.
+func FuzzUnmarshalUnix(f *testing.F) {
+	unixStat := sampleStat("afile", QTSYMLINK, DMSYMLINK|0777)
+	unixStat.Extension = "some/target"
+	unixStat.Nuid, unixStat.Ngid, unixStat.Nmuid = 1000, 1000, 1000
+
+	seeds := []Message{
+		&TcreateFcall{Fid: 1, Name: "link", Perm: DMSYMLINK | 0777, Mode: OREAD, Extension: "target/path"},
+		&RstatFcall{Stat: unixStat},
+		&TwstatFcall{Fid: 1, Stat: unixStat},
+	}
+	for i, m := range seeds {
+		f.Add(MarshalVersion(Tag(i), m, true))
+	}
+	f.Add([]byte{})
+	f.Add([]byte{0, 0, 0, 0})
+
+	f.Fuzz(func(t *testing.T, raw []byte) {
+		tag, msg, err := UnmarshalVersion(raw, true)
+		if err != nil {
+			return
+		}
+		raw2 := MarshalVersion(tag, msg, true)
+		tag2, msg2, err2 := UnmarshalVersion(raw2, true)
+		if err2 != nil {
+			t.Fatalf("re-marshal of accepted message failed to decode: %v (orig raw=%x)", err2, raw)
+		}
+		if tag2 != tag || msg2.MsgType() != msg.MsgType() {
+			t.Fatalf("re-marshal round trip mismatch: got (%v,%v) want (%v,%v)", tag2, msg2.MsgType(), tag, msg.MsgType())
+		}
+	})
+}

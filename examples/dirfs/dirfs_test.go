@@ -13,7 +13,7 @@ import (
 	"github.com/sandgorgon/9p/server"
 )
 
-func newTestClient(t *testing.T, root string) *client.Client {
+func newTestClient(t *testing.T, root string, opts ...client.Option) *client.Client {
 	t.Helper()
 	fs, err := dirfs.New(root)
 	if err != nil {
@@ -27,7 +27,7 @@ func newTestClient(t *testing.T, root string) *client.Client {
 		srv.ServeConn(serverConn)
 	}()
 
-	c, err := client.NewClient(clientConn)
+	c, err := client.NewClient(clientConn, opts...)
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
@@ -147,6 +147,103 @@ func TestWalkCannotEscapeThroughSymlink(t *testing.T) {
 	}
 	if _, err := os.Lstat(filepath.Join(outside, "new.txt")); err == nil {
 		t.Fatal("Create through symlinked intermediate component wrote outside root")
+	}
+}
+
+// A client that negotiates 9P2000.u can create a symlink and read
+// its target back via Stat's Extension field and Qid.IsSymlink.
+func TestSymlinkCreateAndStat(t *testing.T) {
+	dir := t.TempDir()
+	c := newTestClient(t, dir, client.WithUnixExtensions())
+	if _, err := c.Attach("glenda", ""); err != nil {
+		t.Fatalf("Attach: %v", err)
+	}
+
+	if _, err := c.Symlink("/link", "target/path"); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	// The symlink exists as a real symlink on disk.
+	target, err := os.Readlink(filepath.Join(dir, "link"))
+	if err != nil {
+		t.Fatalf("os.Readlink: %v", err)
+	}
+	if target != "target/path" {
+		t.Errorf("on-disk symlink target = %q, want %q", target, "target/path")
+	}
+
+	root, err := c.Attach("glenda", "")
+	if err != nil {
+		t.Fatalf("Attach: %v", err)
+	}
+	link, err := root.Walk("link")
+	if err != nil {
+		t.Fatalf("Walk: %v", err)
+	}
+	st, err := link.Stat()
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if !st.Qid.IsSymlink() {
+		t.Errorf("Qid = %+v, want IsSymlink() true", st.Qid)
+	}
+	if st.Extension != "target/path" {
+		t.Errorf("Stat.Extension = %q, want %q", st.Extension, "target/path")
+	}
+
+	// A well-behaved client never Opens a symlink directly.
+	if _, err := c.Open("/link", p9.OREAD); err == nil {
+		t.Error("Open on a symlink succeeded, want error")
+	}
+}
+
+// A directory listing over a 9P2000.u connection reports a symlink
+// child's target; over a plain connection the Extension field is
+// silently absent (dropped by the wire encoder), not an error.
+func TestSymlinkInDirectoryListing(t *testing.T) {
+	dir := t.TempDir()
+	c := newTestClient(t, dir, client.WithUnixExtensions())
+	if _, err := c.Attach("glenda", ""); err != nil {
+		t.Fatalf("Attach: %v", err)
+	}
+	if _, err := c.Symlink("/link", "somewhere"); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	rd, err := c.Open("/", p9.OREAD)
+	if err != nil {
+		t.Fatalf("Open /: %v", err)
+	}
+	defer rd.Close()
+	entries, err := rd.ReadDir()
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name != "link" {
+		t.Fatalf("ReadDir = %+v", entries)
+	}
+	if !entries[0].Qid.IsSymlink() {
+		t.Errorf("listed entry Qid = %+v, want IsSymlink() true", entries[0].Qid)
+	}
+	if entries[0].Extension != "somewhere" {
+		t.Errorf("listed entry Extension = %q, want %q", entries[0].Extension, "somewhere")
+	}
+}
+
+// Client.Symlink against a connection that never negotiated
+// 9P2000.u fails client-side with a clear error, without ever
+// sending a Tcreate.
+func TestSymlinkRequiresUnixExtensions(t *testing.T) {
+	dir := t.TempDir()
+	c := newTestClient(t, dir)
+	if _, err := c.Attach("glenda", ""); err != nil {
+		t.Fatalf("Attach: %v", err)
+	}
+	if _, err := c.Symlink("/link", "target"); err == nil {
+		t.Error("Symlink on a plain 9P2000 connection succeeded, want error")
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "link")); err == nil {
+		t.Error("Symlink on a plain 9P2000 connection created a file on disk")
 	}
 }
 

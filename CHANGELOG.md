@@ -8,6 +8,29 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+### Added
+
+- Optional 9P2000.u support: symlinks as first-class objects, not
+  just a `dirfs`-level containment concern (see 0.8.0's fix). A
+  client requests it via `client.WithUnixExtensions()`; a server
+  that doesn't understand `9P2000.u` is handled gracefully — the
+  handshake falls back to plain 9P2000 and every existing caller's
+  wire behavior is byte-for-byte unchanged.
+  - `p9.VersionU`, `p9.DMSYMLINK`/`Mode.IsSymlink`,
+    `p9.QTSYMLINK`/`Qid.IsSymlink`, and an `Extension` field
+    (plus `Nuid`/`Ngid`/`Nmuid`) on `p9.Stat`, present on the wire
+    only when the connection negotiated `9P2000.u`.
+  - `client.Fid.Symlink`/`SymlinkContext` and
+    `client.Client.Symlink`/`SymlinkContext` create a symlink and
+    return its `Qid`; `Stat`'s `Extension` field carries the target.
+  - `server.SymlinkFile`, an optional interface (like
+    `http.Hijacker`) a `server.File` can implement to support
+    `Tcreate`-with-`DMSYMLINK` — `server.File`/`FileSystem`
+    themselves are unchanged, so no existing implementer breaks.
+  - `examples/dirfs` and `examples/memfs` both implement
+    `SymlinkFile`; `dirfs` rejects `Open` on a symlink (a
+    well-behaved client Stats/Walks one, never opens it directly).
+
 ## [0.8.0] - 2026-09-09
 
 ### Added

@@ -50,6 +50,41 @@ type File interface {
 	Close() error
 }
 
+// SymlinkFile is implemented by a File that can create a symlink as
+// one of its children — an optional capability, since it's specific
+// to 9P2000.u: a client's Tcreate with the DMSYMLINK bit set on a
+// connection that negotiated VersionU calls Symlink instead of
+// Create. A File that doesn't implement SymlinkFile causes such a
+// request to fail with an Rerror.
+type SymlinkFile interface {
+	File
+
+	// Symlink creates a symlink named name under the receiver,
+	// pointing at target (an arbitrary string — 9P2000.u does not
+	// require it to resolve to anything, let alone something inside
+	// this FileSystem), and returns it.
+	Symlink(ctx context.Context, name, target string) (File, error)
+}
+
+type unixCtxKey struct{}
+
+// UnixFromContext reports whether the request associated with ctx
+// arrived on a connection that negotiated 9P2000.u (VersionU). A
+// File implementation checks this before including 9P2000.u-only
+// data — such as a symlink's target — in a directory listing built
+// via MarshalDirVersion, since that data is otherwise silently
+// dropped on a plain 9P2000 connection by the wire encoder itself.
+func UnixFromContext(ctx context.Context) bool {
+	unix, _ := ctx.Value(unixCtxKey{}).(bool)
+	return unix
+}
+
+// withUnix returns a copy of ctx carrying unix, recoverable via
+// UnixFromContext.
+func withUnix(ctx context.Context, unix bool) context.Context {
+	return context.WithValue(ctx, unixCtxKey{}, unix)
+}
+
 // Server serves a FileSystem over 9P2000.
 type Server struct {
 	FS FileSystem

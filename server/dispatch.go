@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -120,7 +121,18 @@ func (c *conn) tCreate(ctx context.Context, m *p9.TcreateFcall) p9.Message {
 	if !ok {
 		return errUnknownFid()
 	}
-	nf, err := of.get().Create(ctx, m.Name, m.Perm, m.Mode)
+
+	var nf File
+	var err error
+	if c.unix.Load() && m.Perm&p9.DMSYMLINK != 0 {
+		sf, ok := of.get().(SymlinkFile)
+		if !ok {
+			return errReply(errors.New("server: file does not support symlinks"))
+		}
+		nf, err = sf.Symlink(ctx, m.Name, m.Extension)
+	} else {
+		nf, err = of.get().Create(ctx, m.Name, m.Perm, m.Mode)
+	}
 	if err != nil {
 		return errReply(err)
 	}

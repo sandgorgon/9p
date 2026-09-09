@@ -21,12 +21,17 @@ const (
 // Permission-mode bits: the top bits mark directories and other
 // special files, the low 9 bits are rwxrwxrwx permissions.
 const (
-	DMDIR    Mode = 0x80000000
-	DMAPPEND Mode = 0x40000000
-	DMEXCL   Mode = 0x20000000
-	DMTMP    Mode = 0x04000000
-	DMPerm   Mode = 0777
+	DMDIR     Mode = 0x80000000
+	DMAPPEND  Mode = 0x40000000
+	DMEXCL    Mode = 0x20000000
+	DMTMP     Mode = 0x04000000
+	DMSYMLINK Mode = 0x02000000 // 9P2000.u only
+	DMPerm    Mode = 0777
 )
 
 // IsDir reports whether the permission Mode marks a directory.
 func (m Mode) IsDir() bool { return m&DMDIR != 0 }
+
+// IsSymlink reports whether the permission Mode marks a symlink
+// (9P2000.u only).
+func (m Mode) IsSymlink() bool { return m&DMSYMLINK != 0 }

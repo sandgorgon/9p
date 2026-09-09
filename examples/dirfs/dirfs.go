@@ -66,7 +66,10 @@ type file struct {
 
 func qidFor(path string, info fs.FileInfo) p9.Qid {
 	t := p9.QTFILE
-	if info.IsDir() {
+	switch {
+	case info.Mode()&os.ModeSymlink != 0:
+		t = p9.QTSYMLINK
+	case info.IsDir():
 		t = p9.QTDIR
 	}
 	h := fnv.New64a()
@@ -74,20 +77,27 @@ func qidFor(path string, info fs.FileInfo) p9.Qid {
 	return p9.Qid{Type: t, Version: uint32(info.ModTime().Unix()), Path: h.Sum64()}
 }
 
-func statFromInfo(path string, info fs.FileInfo) p9.Stat {
+// statFromInfo builds path's Stat. target is its symlink target
+// (9P2000.u's Extension field) when non-empty; it's always ""
+// except when info is itself a symlink.
+func statFromInfo(path string, info fs.FileInfo, target string) p9.Stat {
 	mode := p9.Mode(info.Mode().Perm())
 	if info.IsDir() {
 		mode |= p9.DMDIR
 	}
+	if target != "" {
+		mode |= p9.DMSYMLINK
+	}
 	return p9.Stat{
-		Qid:    qidFor(path, info),
-		Mode:   mode,
-		Mtime:  uint32(info.ModTime().Unix()),
-		Length: uint64(info.Size()),
-		Name:   filepath.Base(path),
-		Uid:    "glenda",
-		Gid:    "glenda",
-		Muid:   "glenda",
+		Qid:       qidFor(path, info),
+		Mode:      mode,
+		Mtime:     uint32(info.ModTime().Unix()),
+		Length:    uint64(info.Size()),
+		Name:      filepath.Base(path),
+		Uid:       "glenda",
+		Gid:       "glenda",
+		Muid:      "glenda",
+		Extension: target,
 	}
 }
 
@@ -112,7 +122,11 @@ func (f *file) Stat(ctx context.Context) (p9.Stat, error) {
 	if err != nil {
 		return p9.Stat{}, err
 	}
-	st := statFromInfo(path, info)
+	var target string
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, _ = f.fs.root.Readlink(path)
+	}
+	st := statFromInfo(path, info, target)
 	if path == "." {
 		st.Name = f.fs.name
 	}
@@ -185,6 +199,9 @@ func (f *file) Open(ctx context.Context, mode p9.Mode) error {
 	if err != nil {
 		return err
 	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("dirfs: %s: is a symlink", path)
+	}
 	if info.IsDir() {
 		return nil
 	}
@@ -238,6 +255,22 @@ func (f *file) Create(ctx context.Context, name string, perm p9.Mode, mode p9.Mo
 	return child, nil
 }
 
+// Symlink implements server.SymlinkFile: it creates a real symlink
+// on disk pointing at target, without validating it — target may be
+// absolute or point outside root, exactly like os.Symlink; nothing
+// in this package ever follows a symlink's target, so that's safe.
+func (f *file) Symlink(ctx context.Context, name, target string) (server.File, error) {
+	path := f.currentPath()
+	if name == "" || name == ".." || strings.ContainsRune(name, '/') {
+		return nil, fmt.Errorf("dirfs: invalid name %q", name)
+	}
+	newPath := filepath.Join(path, name)
+	if err := f.fs.root.Symlink(target, newPath); err != nil {
+		return nil, err
+	}
+	return &file{fs: f.fs, path: newPath}, nil
+}
+
 func (f *file) Read(ctx context.Context, offset int64, p []byte) (int, error) {
 	path := f.currentPath()
 	info, err := f.fs.root.Lstat(path)
@@ -245,7 +278,7 @@ func (f *file) Read(ctx context.Context, offset int64, p []byte) (int, error) {
 		return 0, err
 	}
 	if info.IsDir() {
-		return f.readDir(path, offset, p)
+		return f.readDir(ctx, path, offset, p)
 	}
 
 	f.mu.Lock()
@@ -262,7 +295,7 @@ func (f *file) Read(ctx context.Context, offset int64, p []byte) (int, error) {
 // long as the directory isn't concurrently modified, and hands them
 // to server.MarshalDir to satisfy the directory Read contract
 // (whole entries only, never split across a call).
-func (f *file) readDir(path string, offset int64, p []byte) (int, error) {
+func (f *file) readDir(ctx context.Context, path string, offset int64, p []byte) (int, error) {
 	dirf, err := f.fs.root.Open(path)
 	if err != nil {
 		return 0, err
@@ -280,9 +313,14 @@ func (f *file) readDir(path string, offset int64, p []byte) (int, error) {
 		if err != nil {
 			continue // entry vanished between ReadDir and Info; skip it
 		}
-		entries = append(entries, statFromInfo(filepath.Join(path, e.Name()), info))
+		childPath := filepath.Join(path, e.Name())
+		var target string
+		if e.Type()&os.ModeSymlink != 0 {
+			target, _ = f.fs.root.Readlink(childPath)
+		}
+		entries = append(entries, statFromInfo(childPath, info, target))
 	}
-	return server.MarshalDir(entries, offset, p)
+	return server.MarshalDirVersion(entries, offset, p, server.UnixFromContext(ctx))
 }
 
 func (f *file) Write(ctx context.Context, offset int64, p []byte) (int, error) {

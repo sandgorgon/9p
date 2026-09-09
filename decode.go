@@ -10,8 +10,9 @@ import "encoding/binary"
 // primitive everything else is built on, which is what keeps
 // Unmarshal panic-free on arbitrary/truncated input from the wire.
 type decoder struct {
-	buf []byte
-	err error
+	buf  []byte
+	err  error
+	unix bool // mirrors encoder.unix; gates the 9P2000.u-only fields
 }
 
 func (d *decoder) take(n int) []byte {

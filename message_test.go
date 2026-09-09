@@ -89,6 +89,70 @@ func TestStatRoundTrip(t *testing.T) {
 	}
 }
 
+// TestMessageRoundTripUnix mirrors TestMessageRoundTrip for the
+// 9P2000.u-only fields on Stat and Tcreate, exercised via
+// MarshalVersion/UnmarshalVersion with unix=true.
+func TestMessageRoundTripUnix(t *testing.T) {
+	unixStat := sampleStat("afile", QTSYMLINK|QTFILE, 0644|DMSYMLINK)
+	unixStat.Extension = "../target"
+	unixStat.Nuid, unixStat.Ngid, unixStat.Nmuid = 1000, 1000, 1000
+
+	cases := []struct {
+		name string
+		tag  Tag
+		msg  Message
+	}{
+		{"Tcreate-symlink", 5, &TcreateFcall{Fid: 1, Name: "link", Perm: DMSYMLINK | 0777, Mode: OREAD, Extension: "target/path"}},
+		{"Tcreate-plain-still-works", 5, &TcreateFcall{Fid: 1, Name: "file", Perm: 0644, Mode: ORDWR}},
+		{"Rstat-symlink", 10, &RstatFcall{Stat: unixStat}},
+		{"Twstat-symlink", 11, &TwstatFcall{Fid: 1, Stat: unixStat}},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			raw := MarshalVersion(c.tag, c.msg, true)
+			gotTag, gotMsg, err := UnmarshalVersion(raw, true)
+			if err != nil {
+				t.Fatalf("UnmarshalVersion: %v", err)
+			}
+			if gotTag != c.tag {
+				t.Errorf("tag = %v, want %v", gotTag, c.tag)
+			}
+			if !reflect.DeepEqual(gotMsg, c.msg) {
+				t.Errorf("round trip mismatch:\n got  %#v\n want %#v", gotMsg, c.msg)
+			}
+		})
+	}
+}
+
+// TestMessageRoundTripUnixDefaultUnaffected confirms that plain
+// Marshal/Unmarshal (unix=false) never emit or expect the 9P2000.u
+// fields, even when a message happens to have them set — the
+// existing behavior every non-opted-in caller depends on.
+func TestMessageRoundTripUnixDefaultUnaffected(t *testing.T) {
+	tc := &TcreateFcall{Fid: 1, Name: "link", Perm: DMSYMLINK | 0777, Mode: OREAD, Extension: "target/path"}
+	raw := Marshal(5, tc)
+	_, gotMsg, err := Unmarshal(raw)
+	if err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	got := gotMsg.(*TcreateFcall)
+	if got.Extension != "" {
+		t.Errorf("Extension leaked onto plain 9P2000 wire: got %q, want \"\"", got.Extension)
+	}
+
+	s := sampleStat("afile", QTFILE, 0644)
+	s.Extension = "should not be sent"
+	rawStat := s.Marshal()
+	gotStat, err := UnmarshalStat(rawStat)
+	if err != nil {
+		t.Fatalf("UnmarshalStat: %v", err)
+	}
+	if gotStat.Extension != "" {
+		t.Errorf("Stat.Extension leaked onto plain 9P2000 wire: got %q, want \"\"", gotStat.Extension)
+	}
+}
+
 func TestUnmarshalTruncated(t *testing.T) {
 	raw := Marshal(1, &TattachFcall{Fid: 0, Afid: NoFid, Uname: "glenda", Aname: "/"})
 	for n := range len(raw) {

@@ -7,13 +7,14 @@ import "fmt"
 type QidType uint8
 
 const (
-	QTDIR    QidType = 0x80
-	QTAPPEND QidType = 0x40
-	QTEXCL   QidType = 0x20
-	QTMOUNT  QidType = 0x10
-	QTAUTH   QidType = 0x08
-	QTTMP    QidType = 0x04
-	QTFILE   QidType = 0x00
+	QTDIR     QidType = 0x80
+	QTAPPEND  QidType = 0x40
+	QTEXCL    QidType = 0x20
+	QTMOUNT   QidType = 0x10
+	QTAUTH    QidType = 0x08
+	QTTMP     QidType = 0x04
+	QTSYMLINK QidType = 0x02 // 9P2000.u only
+	QTFILE    QidType = 0x00
 )
 
 // Qid is the server's identification for a file: its type, a
@@ -27,6 +28,10 @@ type Qid struct {
 
 // IsDir reports whether the Qid identifies a directory.
 func (q Qid) IsDir() bool { return q.Type&QTDIR != 0 }
+
+// IsSymlink reports whether the Qid identifies a symlink (9P2000.u
+// only).
+func (q Qid) IsSymlink() bool { return q.Type&QTSYMLINK != 0 }
 
 func (q Qid) String() string {
 	return fmt.Sprintf("(%016x %d %s)", q.Path, q.Version, q.Type)
@@ -42,6 +47,9 @@ func (t QidType) String() string {
 	}
 	if t&QTEXCL != 0 {
 		s += "l"
+	}
+	if t&QTSYMLINK != 0 {
+		s += "L"
 	}
 	if t&QTMOUNT != 0 {
 		s += "m"

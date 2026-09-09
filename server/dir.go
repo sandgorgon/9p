@@ -41,6 +41,13 @@ import (
 // hold even one whole entry, that is also reported as an error rather
 // than a valid empty or partial read.
 func MarshalDir(entries []p9.Stat, offset int64, buf []byte) (int, error) {
+	return MarshalDirVersion(entries, offset, buf, false)
+}
+
+// MarshalDirVersion is MarshalDir, but encodes each entry with the
+// 9P2000.u-only fields (such as a symlink's target) included when
+// unix is true — see UnixFromContext.
+func MarshalDirVersion(entries []p9.Stat, offset int64, buf []byte, unix bool) (int, error) {
 	if offset < 0 {
 		return 0, errors.New("server: MarshalDir: negative offset")
 	}
@@ -51,7 +58,7 @@ func MarshalDir(entries []p9.Stat, offset int64, buf []byte) (int, error) {
 		if pos == offset {
 			break
 		}
-		blobLen := int64(len(entries[i].Marshal()))
+		blobLen := int64(len(entries[i].MarshalVersion(unix)))
 		if pos+blobLen > offset {
 			return 0, errors.New("server: MarshalDir: offset does not land on an entry boundary")
 		}
@@ -66,7 +73,7 @@ func MarshalDir(entries []p9.Stat, offset int64, buf []byte) (int, error) {
 
 	var n int
 	for _, e := range entries[i:] {
-		blob := e.Marshal()
+		blob := e.MarshalVersion(unix)
 		if n+len(blob) > len(buf) {
 			break
 		}
