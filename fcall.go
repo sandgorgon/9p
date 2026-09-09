@@ -366,6 +366,11 @@ type TcreateFcall struct {
 	Name string
 	Perm Mode
 	Mode Mode
+
+	// Extension is 9P2000.u only: present on the wire only when the
+	// connection negotiated VersionU. It holds the symlink target
+	// when Perm has DMSYMLINK set.
+	Extension string
 }
 
 func (m *TcreateFcall) MsgType() FcallType { return Tcreate }
@@ -374,12 +379,18 @@ func (m *TcreateFcall) marshalBody(e *encoder) {
 	e.string(m.Name)
 	e.uint32(uint32(m.Perm))
 	e.uint8(uint8(m.Mode))
+	if e.unix {
+		e.string(m.Extension)
+	}
 }
 func (m *TcreateFcall) unmarshalBody(d *decoder) {
 	m.Fid = Fid(d.uint32())
 	m.Name = d.string()
 	m.Perm = Mode(d.uint32())
 	m.Mode = Mode(d.uint8())
+	if d.unix {
+		m.Extension = d.string()
+	}
 }
 
 type RcreateFcall struct {

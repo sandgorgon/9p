@@ -36,6 +36,7 @@ type conn struct {
 	rwc     io.ReadWriteCloser
 	baseCtx context.Context
 	msize   atomic.Uint32
+	unix    atomic.Bool
 
 	writeMu sync.Mutex
 
@@ -88,7 +89,7 @@ func (c *conn) delFid(fid p9.Fid) (*openFile, bool) {
 }
 
 func (c *conn) writeReply(tag p9.Tag, reply p9.Message) error {
-	raw := p9.Marshal(tag, reply)
+	raw := p9.MarshalVersion(tag, reply, c.unix.Load())
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 	return p9.WriteMessage(c.rwc, raw)
@@ -120,11 +121,11 @@ func (c *conn) serve() error {
 		if err != nil {
 			return err
 		}
-		tag, msg, err := p9.Unmarshal(raw)
+		tag, msg, err := p9.UnmarshalVersion(raw, c.unix.Load())
 		if err != nil {
 			return err
 		}
-		ctx, cancel := context.WithCancel(c.baseCtx)
+		ctx, cancel := context.WithCancel(withUnix(c.baseCtx, c.unix.Load()))
 		c.mu.Lock()
 		c.inflight[tag] = cancel
 		c.mu.Unlock()
@@ -192,6 +193,11 @@ func (c *conn) tVersion(m *p9.TversionFcall) p9.Message {
 
 	msize := min(m.Msize, c.srv.maxMsize())
 	c.msize.Store(msize)
+	if m.Version == p9.VersionU {
+		c.unix.Store(true)
+		return &p9.RversionFcall{Msize: msize, Version: p9.VersionU}
+	}
+	c.unix.Store(false)
 	if m.Version != p9.Version {
 		return &p9.RversionFcall{Msize: msize, Version: p9.VersionUnknown}
 	}

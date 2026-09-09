@@ -9,6 +9,12 @@ const (
 	// Version is the protocol version string sent in Tversion.
 	Version = "9P2000"
 
+	// VersionU is the 9P2000.u extension's version string: adds
+	// symlinks (DMSYMLINK/QTSYMLINK), an Extension field on Stat, and
+	// an Extension field on Tcreate, among other Unix-specific
+	// extensions this package does not implement.
+	VersionU = "9P2000.u"
+
 	// VersionUnknown is the version string a server returns when it
 	// does not support the version requested in Tversion.
 	VersionUnknown = "unknown"

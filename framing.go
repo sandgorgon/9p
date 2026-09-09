@@ -44,15 +44,22 @@ func WriteMessage(w io.Writer, raw []byte) error {
 }
 
 // Marshal encodes tag and m into a complete wire message, including
-// the leading 4-byte size prefix.
+// the leading 4-byte size prefix, using plain 9P2000. Use
+// MarshalVersion on a connection that negotiated VersionU.
 func Marshal(tag Tag, m Message) []byte {
+	return MarshalVersion(tag, m, false)
+}
+
+// MarshalVersion is Marshal, but includes the 9P2000.u-only fields
+// on Stat and Tcreate when unix is true.
+func MarshalVersion(tag Tag, m Message, unix bool) []byte {
 	var buf bytes.Buffer
 	buf.Write([]byte{0, 0, 0, 0})
 	buf.WriteByte(byte(m.MsgType()))
 	var tb [2]byte
 	binary.LittleEndian.PutUint16(tb[:], uint16(tag))
 	buf.Write(tb[:])
-	e := encoder{buf: &buf}
+	e := encoder{buf: &buf, unix: unix}
 	m.marshalBody(&e)
 	out := buf.Bytes()
 	binary.LittleEndian.PutUint32(out[0:4], uint32(len(out)))
@@ -60,8 +67,16 @@ func Marshal(tag Tag, m Message) []byte {
 }
 
 // Unmarshal parses a complete wire message, as produced by
-// ReadMessage, into its tag and typed Message.
+// ReadMessage, into its tag and typed Message, assuming plain
+// 9P2000. Use UnmarshalVersion on a connection that negotiated
+// VersionU.
 func Unmarshal(raw []byte) (Tag, Message, error) {
+	return UnmarshalVersion(raw, false)
+}
+
+// UnmarshalVersion is Unmarshal, but expects the 9P2000.u-only
+// fields on Stat and Tcreate to be present when unix is true.
+func UnmarshalVersion(raw []byte, unix bool) (Tag, Message, error) {
 	if len(raw) < minMsgSize {
 		return 0, nil, ErrTruncated
 	}
@@ -75,7 +90,7 @@ func Unmarshal(raw []byte) (Tag, Message, error) {
 	if err != nil {
 		return tag, nil, err
 	}
-	d := decoder{buf: raw[7:]}
+	d := decoder{buf: raw[7:], unix: unix}
 	m.unmarshalBody(&d)
 	if err := d.done(); err != nil {
 		return tag, nil, fmt.Errorf("p9: decoding %v: %w", t, err)

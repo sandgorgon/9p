@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	p9 "github.com/sandgorgon/9p"
@@ -103,6 +104,38 @@ func (f *Fid) CreateContext(ctx context.Context, name string, perm p9.Mode, mode
 		return p9.Qid{}, 0, mismatchErr(p9.Rcreate, reply)
 	}
 	return rc.Qid, rc.Iounit, nil
+}
+
+// Symlink creates a symlink named name under the directory f,
+// pointing at target, then repositions f itself onto the new
+// symlink — matching Create's "repositions f itself" semantics,
+// except the result isn't opened for I/O (a symlink isn't something
+// you read/write directly; see Stat's Extension field for its
+// target). Requires the connection to have negotiated 9P2000.u (see
+// WithUnixExtensions).
+func (f *Fid) Symlink(name, target string) (p9.Qid, error) {
+	return f.SymlinkContext(context.Background(), name, target)
+}
+
+func (f *Fid) SymlinkContext(ctx context.Context, name, target string) (p9.Qid, error) {
+	if !f.c.unix.Load() {
+		return p9.Qid{}, errors.New("client: Symlink requires 9P2000.u")
+	}
+	reply, err := f.c.rpc(ctx, &p9.TcreateFcall{
+		Fid:       f.fid,
+		Name:      name,
+		Perm:      p9.DMSYMLINK | 0777,
+		Mode:      p9.OREAD,
+		Extension: target,
+	})
+	if err != nil {
+		return p9.Qid{}, err
+	}
+	rc, ok := reply.(*p9.RcreateFcall)
+	if !ok {
+		return p9.Qid{}, mismatchErr(p9.Rcreate, reply)
+	}
+	return rc.Qid, nil
 }
 
 // OpenFile is Open, but returns an I/O-capable *File positioned at f
