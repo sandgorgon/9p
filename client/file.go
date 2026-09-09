@@ -260,6 +260,37 @@ func (f *File) Stat() (p9.Stat, error) {
 	return f.fid.Stat()
 }
 
+// Rename renames the file to newName within its current parent
+// directory, via Twstat — 9P2000 rename cannot move a file between
+// directories, only change its final path element. All other Stat
+// fields are left untouched.
+func (f *File) Rename(newName string) error {
+	return f.RenameContext(context.Background(), newName)
+}
+
+func (f *File) RenameContext(ctx context.Context, newName string) error {
+	return f.fid.WStatContext(ctx, p9.Stat{
+		Type:   ^uint16(0),
+		Dev:    ^uint32(0),
+		Qid:    p9.Qid{Type: p9.QidType(^uint8(0)), Version: ^uint32(0), Path: ^uint64(0)},
+		Mode:   p9.Mode(^uint32(0)),
+		Atime:  ^uint32(0),
+		Mtime:  ^uint32(0),
+		Length: ^uint64(0),
+		Name:   newName,
+	})
+}
+
+// Remove removes the file from the server and clunks its fid, even
+// if the removal itself fails, per 9P2000 Tremove semantics.
+func (f *File) Remove() error {
+	return f.RemoveContext(context.Background())
+}
+
+func (f *File) RemoveContext(ctx context.Context) error {
+	return f.fid.RemoveContext(ctx)
+}
+
 // Close clunks the file's fid.
 func (f *File) Close() error {
 	return f.fid.Clunk()

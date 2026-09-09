@@ -8,6 +8,25 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+### Added
+
+- `client.File.Rename`/`RenameContext` and `File.Remove`/
+  `RemoveContext`, wrapping `Fid.WStat`/`Fid.Remove` so a caller
+  holding a `*File` (the only thing `Open`/`Create` ever return) can
+  reach both without an exported path to the underlying `*Fid`.
+  Unblocks atomic-rename writes and lock-file release from the
+  public client API.
+
+### Fixed
+
+- `examples/dirfs`: path confinement (`within()` plus `filepath.Join`
+  + `os.Lstat`/`OpenFile`/`Rename`) only checked the *intended* joined
+  path string, so a symlink planted at an intermediate path component
+  (e.g. `<root>/vendor` → `/etc`) could still be followed out of
+  `root` at syscall time. `dirfs` now resolves every path through an
+  `os.Root` opened on the exported directory, which refuses to follow
+  an escaping symlink by construction.
+
 ## [0.7.1] - 2026-08-30
 
 ### Fixed
