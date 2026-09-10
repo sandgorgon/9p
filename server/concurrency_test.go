@@ -128,12 +128,23 @@ func TestMaxConcurrentRequestsLimitsConcurrency(t *testing.T) {
 		t.Fatalf("Attach: %v", err)
 	}
 
-	done := make(chan error, n+1)
-	for range n + 1 {
+	// Clone all fids up front, before any Stat call can occupy the
+	// semaphore's slots — Twalk is itself semaphore-gated, so cloning a
+	// fid after both slots are taken would queue it right alongside
+	// the Stats this test means to test, deadlocking the test's own
+	// goroutine against itself (it's the one that must later close
+	// release to unblock those Stats).
+	fids := make([]*client.Fid, n+1)
+	for i := range fids {
 		fid, err := root.Walk()
 		if err != nil {
 			t.Fatalf("Walk (clone): %v", err)
 		}
+		fids[i] = fid
+	}
+
+	done := make(chan error, n+1)
+	for _, fid := range fids {
 		go func() {
 			_, err := fid.Stat()
 			done <- err
