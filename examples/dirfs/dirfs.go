@@ -2,7 +2,9 @@
 // directory tree from the local filesystem, using only the standard
 // library. Every path it touches is resolved through an os.Root
 // opened on the exported directory, so a client cannot walk ".."
-// or follow a symlink at an intermediate path component past it.
+// or follow a symlink at an intermediate path component past it. It
+// implements server.SymlinkFile, so a client that negotiates
+// 9P2000.u can create real symlinks under it.
 package dirfs
 
 import (

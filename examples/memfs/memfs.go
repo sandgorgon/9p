@@ -1,6 +1,8 @@
 // Package memfs is an in-memory server.FileSystem backend: a tree of
 // files and directories held entirely in memory, useful both as a
-// demo server and as a test fixture for the server package.
+// demo server and as a test fixture for the server package. It
+// implements server.SymlinkFile, so a client that negotiates
+// 9P2000.u can create symlink nodes under it.
 package memfs
 
 import (
