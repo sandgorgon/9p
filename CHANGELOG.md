@@ -8,6 +8,8 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-09-09
+
 ### Fixed
 
 - README and package doc comments still said 9P2000.u wasn't
