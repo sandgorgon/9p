@@ -8,6 +8,16 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+### Fixed
+
+- README and package doc comments still said 9P2000.u wasn't
+  supported ("no `.u`... extensions"), left over from before 0.9.0
+  added optional symlink support. README now documents the extension
+  (opting in via `client.WithUnixExtensions()`, and a backend opting
+  in via `server.SymlinkFile`) instead of denying it exists, and the
+  `p9`/`client`/`server`/`dirfs`/`memfs` package doc comments mention
+  it too.
+
 ## [0.9.0] - 2026-09-09
 
 ### Added

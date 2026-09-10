@@ -1,6 +1,7 @@
 // Package client implements a 9P2000 client: dial or wrap a
 // connection, attach to a server's exported tree, and walk, open,
-// read, write, and stat files on it.
+// read, write, and stat files on it. WithUnixExtensions opts into
+// the 9P2000.u extension, enabling Fid.Symlink/Client.Symlink.
 package client
 
 import (

@@ -3,6 +3,11 @@
 // and fcall(3). It provides only the message types and their
 // marshaling/unmarshaling to and from the wire format; connection
 // handling and RPC dispatch live in the client and server packages.
+//
+// The 9P2000.u extension (VersionU) is also supported, for its
+// symlink support (DMSYMLINK/QTSYMLINK and Stat's Extension field)
+// and numeric Uid/Gid/Muid (Stat's Nuid/Ngid/Nmuid) — not the rest
+// of .u (special/device files, remapped errno numbers) or .L.
 package p9
 
 const (

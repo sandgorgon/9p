@@ -1,7 +1,9 @@
 // Package server implements a 9P2000 server: given a FileSystem
 // backend, it handles wire encoding, fid bookkeeping, multi-element
 // walk batching, and Tflush cancellation, and exposes the backend to
-// any 9P2000 client over a net.Listener or a single connection.
+// any 9P2000 client over a net.Listener or a single connection. A
+// backend opts into 9P2000.u symlink support via the optional
+// SymlinkFile interface.
 package server
 
 import (

@@ -8,12 +8,15 @@
 [![Go](https://img.shields.io/badge/go-blue?logo=go&logoColor=white)](https://github.com/topics/go)
 [![Plan 9](https://img.shields.io/badge/plan9-lightgrey)](https://github.com/topics/plan9)
 [![9P2000](https://img.shields.io/badge/9p2000-lightgrey)](https://github.com/topics/9p2000)
+[![9P2000.u](https://img.shields.io/badge/9p2000.u-lightgrey)](https://github.com/topics/9p2000-u)
 [![Filesystem](https://img.shields.io/badge/filesystem-lightgrey)](https://github.com/topics/filesystem)
 [![Network Protocol](https://img.shields.io/badge/network--protocol-lightgrey)](https://github.com/topics/network-protocol)
 
 A pure-Go implementation of the Plan 9 filesystem protocol, **9P2000**
-(the original 1992 spec — not the `.u`/`.L` Linux extensions), with
-no dependencies beyond the standard library.
+(the original 1992 spec), with no dependencies beyond the standard
+library. Symlinks are also supported as an opt-in **9P2000.u**
+extension — see [Symlinks (9P2000.u)](#symlinks-9p2000u) below; the
+`.L` (Linux-specific) extension isn't implemented.
 
 ```
 go get github.com/sandgorgon/9p
@@ -23,11 +26,11 @@ go get github.com/sandgorgon/9p
 
 | Package                | What it is |
 |-------------------------|------------|
-| `p9`                    | Wire encoding: message types, `Marshal`/`Unmarshal`, `Qid`, `Stat`, `Mode`. No I/O policy. |
-| `p9/client`             | A 9P2000 client: dial or wrap a connection, `Attach`, `Walk`, `Open`, and a `File` implementing `io.Reader`/`Writer`/`ReaderAt`/`WriterAt`/`Seeker`/`Closer`. |
-| `p9/server`             | A 9P2000 server: given a small `FileSystem`/`File` backend interface, handles wire encoding, fid bookkeeping, walk batching, and `Tflush` cancellation. |
-| `p9/examples/memfs`     | An in-memory `server.FileSystem` — a demo backend and the server package's own test fixture. |
-| `p9/examples/dirfs`     | A `server.FileSystem` that exports a real local directory tree, with every path validated to stay inside the configured root. |
+| `p9`                    | Wire encoding: message types, `Marshal`/`Unmarshal`, `Qid`, `Stat`, `Mode`. No I/O policy. Optionally speaks 9P2000.u (`VersionU`) for symlinks. |
+| `p9/client`             | A 9P2000 client: dial or wrap a connection, `Attach`, `Walk`, `Open`, and a `File` implementing `io.Reader`/`Writer`/`ReaderAt`/`WriterAt`/`Seeker`/`Closer`. `WithUnixExtensions()` opts into 9P2000.u and `Symlink`. |
+| `p9/server`             | A 9P2000 server: given a small `FileSystem`/`File` backend interface, handles wire encoding, fid bookkeeping, walk batching, and `Tflush` cancellation. A backend opts into symlink support via the optional `SymlinkFile` interface. |
+| `p9/examples/memfs`     | An in-memory `server.FileSystem` — a demo backend and the server package's own test fixture. Implements `SymlinkFile`. |
+| `p9/examples/dirfs`     | A `server.FileSystem` that exports a real local directory tree, with every path resolved through an `os.Root` so it can't escape the configured root even via a symlink. Implements `SymlinkFile`. |
 | `p9/cmd/9ps`            | Serves a directory (or an empty in-memory filesystem with `-mem`) over TCP. |
 | `p9/cmd/9pc`            | A bare CLI client: `ls`, `cat`, `get`, `put`. |
 
@@ -79,13 +82,43 @@ one that's still in flight. See `examples/memfs` for the smallest
 complete implementation, or `examples/dirfs` for one backed by real
 files.
 
+## Symlinks (9P2000.u)
+
+Plain 9P2000 has no concept of a symlink. Support for one is an
+opt-in extension, negotiated at connection time:
+
+```go
+c, err := client.NewClient(conn, client.WithUnixExtensions())
+```
+
+If the server doesn't understand `9P2000.u`, `NewClient` falls back
+to plain 9P2000 automatically — every other client call behaves
+exactly as it does today. Once negotiated:
+
+```go
+qid, err := c.Symlink("/some/link", "target/path")
+```
+
+`Client.Symlink`/`Fid.Symlink` create one; a symlink's target comes
+back in `Stat.Extension` (`Qid.IsSymlink()`/`Mode.IsSymlink()` report
+its type). A symlink is never followed automatically — Stat or Walk
+it to discover it, don't Open it directly.
+
+A backend adds symlink support by implementing the optional
+`server.SymlinkFile` interface (`server.File` plus one more method,
+`Symlink`) — `examples/dirfs` and `examples/memfs` both do. A
+`server.File` that doesn't implement it just can't have symlinks
+created under it; nothing else about it needs to change.
+
 ## Known limitations
 
 - No authentication: `Tauth` always fails with "authentication not
   required," and the client always attaches with `NOFID`. Servers
   that require an auth handshake before attach aren't supported.
-- Only the base 9P2000 spec — no `.u` (numeric uids, symlinks,
-  special files) or `.L` (Linux-specific) extensions.
+- 9P2000.u support is limited to symlinks and the numeric uid/gid/muid
+  fields on `Stat` — no other `.u` features (special/device files,
+  remapped errno numbers) or the separate `.L` (Linux-specific)
+  extension.
 - `Tflush` cancellation reaches a backend's `context.Context`
   parameters, but `memfs`/`dirfs` don't check them mid-operation
   (their operations are fast enough that it wouldn't matter);
