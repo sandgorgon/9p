@@ -8,6 +8,16 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+### Fixed
+
+- `TestMaxConcurrentRequestsLimitsConcurrency` had a flaky deadlock:
+  it interleaved `Walk` and async `Stat` calls, and since `Twalk` is
+  itself gated by the concurrency semaphore, two `Stat`s could claim
+  both slots before the last `Walk` ran, deadlocking the test's own
+  goroutine (the one that had to close `release` to unblock them).
+  Test-only; no server behavior changed. Fixed by cloning all fids
+  up front, matching the sibling flush regression tests.
+
 ## [0.9.1] - 2026-09-09
 
 ### Fixed
