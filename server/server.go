@@ -68,6 +68,25 @@ type SymlinkFile interface {
 	Symlink(ctx context.Context, name, target string) (File, error)
 }
 
+// Cloner is implemented by a File that holds per-fid state — an open
+// handle, say, set by Open and released by Close. A zero-name Twalk
+// clones a fid, and without Cloner the clone would share the very same
+// File instance as the original, so opening one fid and clunking the
+// other would clobber the first one's state. When the source File
+// implements Cloner, Clone is called for such a walk and its result
+// becomes the new fid's File.
+//
+// The returned File must be independent of the receiver's open state:
+// positioned at the same file, but not opened. A File with no per-fid
+// state need not implement Cloner; it is shared as before.
+type Cloner interface {
+	File
+
+	// Clone returns a new File positioned at the same file as the
+	// receiver, with no open state of its own.
+	Clone(ctx context.Context) (File, error)
+}
+
 type unixCtxKey struct{}
 
 // UnixFromContext reports whether the request associated with ctx

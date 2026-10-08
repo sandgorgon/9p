@@ -83,7 +83,15 @@ func (c *conn) tWalk(ctx context.Context, m *p9.TwalkFcall) p9.Message {
 		return errUnknownFid()
 	}
 	if len(m.Wname) == 0 {
-		c.putFid(m.Newfid, &openFile{file: of.get()})
+		f := of.get()
+		if cl, ok := f.(Cloner); ok {
+			nf, err := cl.Clone(ctx)
+			if err != nil {
+				return errReply(err)
+			}
+			f = nf
+		}
+		c.putFid(m.Newfid, &openFile{file: f})
 		return &p9.RwalkFcall{Wqid: []p9.Qid{}}
 	}
 

@@ -124,3 +124,132 @@ func TestRemoveErrorTakesPriorityOverCloseError(t *testing.T) {
 		t.Errorf("Remove error = %q, want Remove's own error %q, not Close's", err, removeErr)
 	}
 }
+
+// cloneFile records which instance each fid reaches, so the tests can
+// tell a shared File from a cloned one.
+type cloneFile struct {
+	id     int
+	opened bool
+	closed bool
+	fs     *cloneFS
+}
+
+type cloneFS struct {
+	files []*cloneFile
+	clone bool // whether files implement Cloner (see cloneOnlyFile)
+}
+
+func (fs *cloneFS) newFile() *cloneFile {
+	f := &cloneFile{id: len(fs.files), fs: fs}
+	fs.files = append(fs.files, f)
+	return f
+}
+
+func (f *cloneFile) Qid() p9.Qid { return p9.Qid{Type: p9.QTFILE, Path: 1} }
+func (f *cloneFile) Stat(ctx context.Context) (p9.Stat, error) {
+	return p9.Stat{Qid: f.Qid(), Name: "clone"}, nil
+}
+func (f *cloneFile) WStat(ctx context.Context, st p9.Stat) error { return nil }
+func (f *cloneFile) Walk(ctx context.Context, name string) (server.File, error) {
+	return nil, errors.New("no children")
+}
+func (f *cloneFile) Open(ctx context.Context, mode p9.Mode) error { f.opened = true; return nil }
+func (f *cloneFile) Create(ctx context.Context, name string, perm, mode p9.Mode) (server.File, error) {
+	return nil, errors.New("cannot create")
+}
+func (f *cloneFile) Read(ctx context.Context, offset int64, p []byte) (int, error) {
+	if !f.opened || f.closed {
+		return 0, errors.New("read of unopened file")
+	}
+	return 0, io.EOF
+}
+func (f *cloneFile) Write(ctx context.Context, offset int64, p []byte) (int, error) {
+	return len(p), nil
+}
+func (f *cloneFile) Remove(ctx context.Context) error { return nil }
+func (f *cloneFile) Close() error                     { f.closed = true; return nil }
+
+// clonerFile is a cloneFile that implements server.Cloner.
+type clonerFile struct{ *cloneFile }
+
+func (f clonerFile) Clone(ctx context.Context) (server.File, error) {
+	return clonerFile{f.fs.newFile()}, nil
+}
+
+func (fs *cloneFS) Attach(ctx context.Context, uname, aname string) (server.File, error) {
+	f := fs.newFile()
+	if fs.clone {
+		return clonerFile{f}, nil
+	}
+	return f, nil
+}
+
+func newCloneClient(t *testing.T, fs *cloneFS) *client.Client {
+	t.Helper()
+	srv := &server.Server{FS: fs}
+	cc, sc := net.Pipe()
+	go func() {
+		defer sc.Close()
+		srv.ServeConn(sc)
+	}()
+	c, err := client.NewClient(cc)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	t.Cleanup(func() { c.Close() })
+	return c
+}
+
+// A zero-name Twalk on a Cloner File must give the clone its own File.
+func TestZeroNameWalkClonesCloner(t *testing.T) {
+	fs := &cloneFS{clone: true}
+	c := newCloneClient(t, fs)
+	root, err := c.Attach("glenda", "")
+	if err != nil {
+		t.Fatalf("Attach: %v", err)
+	}
+	f2, err := root.Walk()
+	if err != nil {
+		t.Fatalf("clone: %v", err)
+	}
+
+	file1, err := root.OpenFile(p9.OREAD)
+	if err != nil {
+		t.Fatalf("open original: %v", err)
+	}
+	defer file1.Close()
+	file2, err := f2.OpenFile(p9.OREAD)
+	if err != nil {
+		t.Fatalf("open clone: %v", err)
+	}
+	if err := file2.Close(); err != nil {
+		t.Fatalf("close clone: %v", err)
+	}
+
+	if len(fs.files) != 2 {
+		t.Fatalf("backend saw %d File instances, want 2 (original + clone)", len(fs.files))
+	}
+	if fs.files[0].closed {
+		t.Fatal("clunking the clone closed the original File")
+	}
+	if !fs.files[1].closed {
+		t.Fatal("clunking the clone did not close the clone's File")
+	}
+}
+
+// A File that is not a Cloner keeps being shared by a clone, exactly
+// as before.
+func TestZeroNameWalkSharesNonCloner(t *testing.T) {
+	fs := &cloneFS{}
+	c := newCloneClient(t, fs)
+	root, err := c.Attach("glenda", "")
+	if err != nil {
+		t.Fatalf("Attach: %v", err)
+	}
+	if _, err := root.Walk(); err != nil {
+		t.Fatalf("clone: %v", err)
+	}
+	if len(fs.files) != 1 {
+		t.Fatalf("backend saw %d File instances, want 1 (shared)", len(fs.files))
+	}
+}

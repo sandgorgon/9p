@@ -273,3 +273,48 @@ func TestWalkCannotEscapeRoot(t *testing.T) {
 		t.Errorf("Walk('..') at root landed on a different file: %+v, want root %+v", aboveQid.Qid, rootQid.Qid)
 	}
 }
+
+// TestClonedFidsOpenIndependently: a zero-name Twalk clones a fid, and
+// each clone must carry its own open state. Opening both and then
+// clunking one must not disturb I/O through the other.
+func TestClonedFidsOpenIndependently(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello\n"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	c := newTestClient(t, dir)
+	root, err := c.Attach("glenda", "")
+	if err != nil {
+		t.Fatalf("Attach: %v", err)
+	}
+	f1, err := root.Walk("a.txt")
+	if err != nil {
+		t.Fatalf("Walk: %v", err)
+	}
+	f2, err := f1.Walk() // zero names: clone f1
+	if err != nil {
+		t.Fatalf("clone: %v", err)
+	}
+
+	file1, err := f1.OpenFile(p9.OREAD)
+	if err != nil {
+		t.Fatalf("open f1: %v", err)
+	}
+	defer file1.Close()
+	file2, err := f2.OpenFile(p9.OREAD)
+	if err != nil {
+		t.Fatalf("open f2: %v", err)
+	}
+	if err := file2.Close(); err != nil {
+		t.Fatalf("close f2: %v", err)
+	}
+
+	got, err := io.ReadAll(file1)
+	if err != nil {
+		t.Fatalf("read via f1 after closing its clone: %v", err)
+	}
+	if string(got) != "hello\n" {
+		t.Fatalf("read via f1 = %q, want %q", got, "hello\n")
+	}
+}
