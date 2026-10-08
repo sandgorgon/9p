@@ -10,6 +10,20 @@ once a first tagged release is cut.
 
 ### Added
 
+- `ns` package: a Plan 9 style namespace, extracted from 9sh. A
+  `Namespace` is a bind tree (`BindFS`, `BindPath`, `Unbind`) with
+  before/after/replace union directories, read-only binds, `Clone` for
+  a private copy, a bind log with an `OnBind` hook, and `Binds`/
+  `Resolve`/`HostPath` introspection. It is itself a
+  `server.FileSystem`, so a service can serve its own namespace.
+  `ns.FromFid` adapts a dialed peer's attach root into a
+  `server.FileSystem`, so another 9P service can be grafted in with
+  `BindFS`. The owner reported for synthetic directories is
+  configurable (`WithUser`); a bind's source label is an opaque string
+  supplied by the caller. Its wrappers and `FromFid` files implement
+  `server.Cloner`, so cloned fids keep independent open state through a
+  namespace. Shell-specific pieces (the `/ns` introspection filesystem,
+  kyu-formatted bind text) stay in 9sh.
 - `server.Cloner`, an optional interface for a `File` that holds
   per-fid state (an open handle, say). A zero-name `Twalk` clones a
   fid; the server used to hand the clone the very same `File` instance,
