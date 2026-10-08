@@ -174,6 +174,13 @@ func (f *file) WStat(ctx context.Context, st p9.Stat) error {
 	return nil
 }
 
+// Clone implements server.Cloner: a cloned fid gets its own file
+// positioned at the same path, with no open handle, so opening or
+// clunking one fid never disturbs the other.
+func (f *file) Clone(ctx context.Context) (server.File, error) {
+	return &file{fs: f.fs, path: f.currentPath()}, nil
+}
+
 func (f *file) Walk(ctx context.Context, name string) (server.File, error) {
 	path := f.currentPath()
 	if name == "" || strings.ContainsRune(name, '/') {

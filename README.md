@@ -29,6 +29,7 @@ go get github.com/sandgorgon/9p
 | `p9`                    | Wire encoding: message types, `Marshal`/`Unmarshal`, `Qid`, `Stat`, `Mode`. No I/O policy. Optionally speaks 9P2000.u (`VersionU`) for symlinks. |
 | `p9/client`             | A 9P2000 client: dial or wrap a connection, `Attach`, `Walk`, `Open`, and a `File` implementing `io.Reader`/`Writer`/`ReaderAt`/`WriterAt`/`Seeker`/`Closer`. `WithUnixExtensions()` opts into 9P2000.u and `Symlink`. |
 | `p9/server`             | A 9P2000 server: given a small `FileSystem`/`File` backend interface, handles wire encoding, fid bookkeeping, walk batching, and `Tflush` cancellation. A backend opts into symlink support via the optional `SymlinkFile` interface. |
+| `p9/ns`                 | A Plan 9 style namespace: a bind tree (`BindFS`, `BindPath`, `Unbind`) with before/after/replace union directories, read-only binds, and `Clone` for a private copy. A `Namespace` is itself a `server.FileSystem`, so a service can serve its own namespace and graft other 9P services into it with `FromFid`. See [Namespaces](#namespaces). |
 | `p9/examples/memfs`     | An in-memory `server.FileSystem` — a demo backend and the server package's own test fixture. Implements `SymlinkFile`. |
 | `p9/examples/dirfs`     | A `server.FileSystem` that exports a real local directory tree, with every path resolved through an `os.Root` so it can't escape the configured root even via a symlink. Implements `SymlinkFile`. |
 | `p9/cmd/9ps`            | Serves a directory (or an empty in-memory filesystem with `-mem`) over TCP. |
@@ -81,6 +82,36 @@ running each request in its own goroutine so a `Tflush` can cancel
 one that's still in flight. See `examples/memfs` for the smallest
 complete implementation, or `examples/dirfs` for one backed by real
 files.
+
+## Namespaces
+
+`p9/ns` lets a 9P service compose its file tree from other services,
+the way a Plan 9 process builds its namespace with `bind` and `mount`.
+There is no FUSE or OS mount table involved; the tree lives in the
+process and is exposed by serving it.
+
+```go
+n := ns.New(ns.WithUser("app"))
+
+// The app's own files.
+n.BindFS(ownFS, "", "/", ns.Replace)
+
+// Graft another 9P service in: dial it, attach, bind its root.
+c, _ := client.Dial("tcp", "peer:5640")
+root, _ := c.Attach("app", "")
+n.BindFS(ns.FromFid(root), "", "/mnt/peer", ns.Replace)
+
+// Layer one directory over another (a union), then serve the lot.
+n.BindPath(ctx, []string{"/mnt/peer/etc"}, "/etc", ns.After)
+(&server.Server{FS: n}).Serve(l)
+```
+
+Clients of the app now see its own files and the peer's under one
+tree. `Binds`, `Log` and `Resolve` report what is bound where and what
+serves a path. `Clone` gives a private copy for a sandboxed block of
+work. `..` is not supported while still inside the bind tree itself
+(different bound trees can disagree about what "up" means); inside a
+bound filesystem it is that filesystem's own business.
 
 ## Symlinks (9P2000.u)
 

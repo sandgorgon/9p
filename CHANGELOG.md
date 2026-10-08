@@ -8,8 +8,37 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-07
+
+### Added
+
+- `ns` package: a Plan 9 style namespace, extracted from 9sh. A
+  `Namespace` is a bind tree (`BindFS`, `BindPath`, `Unbind`) with
+  before/after/replace union directories, read-only binds, `Clone` for
+  a private copy, a bind log with an `OnBind` hook, and `Binds`/
+  `Resolve`/`HostPath` introspection. It is itself a
+  `server.FileSystem`, so a service can serve its own namespace.
+  `ns.FromFid` adapts a dialed peer's attach root into a
+  `server.FileSystem`, so another 9P service can be grafted in with
+  `BindFS`. The owner reported for synthetic directories is
+  configurable (`WithUser`); a bind's source label is an opaque string
+  supplied by the caller. Its wrappers and `FromFid` files implement
+  `server.Cloner`, so cloned fids keep independent open state through a
+  namespace. Shell-specific pieces (the `/ns` introspection filesystem,
+  kyu-formatted bind text) stay in 9sh.
+- `server.Cloner`, an optional interface for a `File` that holds
+  per-fid state (an open handle, say). A zero-name `Twalk` clones a
+  fid; the server used to hand the clone the very same `File` instance,
+  so opening both fids and clunking one clobbered the other's state.
+  When the source `File` implements `Cloner`, the walk now calls
+  `Clone` and gives the new fid the result. Backends without per-fid
+  state are unaffected and keep sharing the instance.
+
 ### Fixed
 
+- `examples/dirfs` kept its open handle on the `File` shared by a fid
+  and its clone, so closing a clone made reads through the original
+  fail with "read of unopened file". It now implements `Cloner`.
 - `TestMaxConcurrentRequestsLimitsConcurrency` had a flaky deadlock:
   it interleaved `Walk` and async `Stat` calls, and since `Twalk` is
   itself gated by the concurrency semaphore, two `Stat`s could claim
