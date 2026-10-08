@@ -8,6 +8,8 @@ once a first tagged release is cut.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-07
+
 ### Added
 
 - `ns` package: a Plan 9 style namespace, extracted from 9sh. A
